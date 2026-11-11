@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowRight,
@@ -24,6 +24,11 @@ import { PrinterManagementPage } from "./PrinterManagementPage";
 import { AuthFlowPage } from "./AuthFlowPage";
 import { AdminSubscriptionReviewPage, SubscriptionPage } from "./SubscriptionPages";
 import { ShopOverviewPage, ShopSupportPage, ShopWalletPage } from "./ShopPages";
+import { ShopDashboardShell } from "./ShopDashboardShell";
+
+function shopPage(page: ReactNode) {
+  return <ShopDashboardShell>{page}</ShopDashboardShell>;
+}
 
 const steps = [
   {
@@ -73,7 +78,7 @@ export default function App() {
   if (path === "/verify-email") return <AuthFlowPage flow="verify" />;
   if (path === "/forgot-password") return <AuthFlowPage flow="forgot" />;
   if (path === "/reset-password") return <AuthFlowPage flow="reset" />;
-  if (path === "/dashboard/settings") return <ShopSettingsPage />;
+  if (path === "/dashboard/settings") return shopPage(<ShopSettingsPage />);
   const shopSections: Record<string, string> = {
     "/dashboard/setting/page": "print-options",
     "/dashboard/setting/discount": "discounts",
@@ -86,17 +91,17 @@ export default function App() {
     "/dashboard/settings/privacy": "privacy-settings",
     "/dashboard/qr-code": "shop-qr-code",
   };
-  if (shopSections[path]) return <ShopSettingsPage initialSection={shopSections[path]} />;
-  if (path === "/dashboard") return <ShopOverviewPage />;
-  if (path === "/dashboard/support") return <ShopSupportPage />;
-  if (path === "/dashboard/wallet" || path === "/dashboard/withdraw") return <ShopWalletPage />;
-  if (path === "/dashboard/jobs") return <OrderManagementPage />;
-  if (path === "/dashboard/setting") return <ShopSettingsPage />;
-  if (path === "/dashboard/orders") return <OrderManagementPage />;
-  if (path === "/dashboard/payments") return <DashboardTools kind="payments" />;
-  if (path === "/dashboard/reports") return <DashboardTools kind="reports" />;
-  if (path === "/dashboard/printers") return <PrinterManagementPage />;
-  if (path === "/dashboard/subscription") return <SubscriptionPage />;
+  if (shopSections[path]) return shopPage(<ShopSettingsPage initialSection={shopSections[path]} />);
+  if (path === "/dashboard") return shopPage(<ShopOverviewPage />);
+  if (path === "/dashboard/support") return shopPage(<ShopSupportPage />);
+  if (path === "/dashboard/wallet" || path === "/dashboard/withdraw") return shopPage(<ShopWalletPage />);
+  if (path === "/dashboard/jobs") return shopPage(<OrderManagementPage />);
+  if (path === "/dashboard/setting") return shopPage(<ShopSettingsPage />);
+  if (path === "/dashboard/orders") return shopPage(<OrderManagementPage />);
+  if (path === "/dashboard/payments") return shopPage(<DashboardTools kind="payments" />);
+  if (path === "/dashboard/reports") return shopPage(<DashboardTools kind="reports" />);
+  if (path === "/dashboard/printers") return shopPage(<PrinterManagementPage />);
+  if (path === "/dashboard/subscription") return shopPage(<SubscriptionPage />);
   if (path === "/admin/subscriptions") return <AdminSubscriptionReviewPage />;
   if (path === "/terms") return <LegalPage kind="terms" />;
   if (path === "/privacy-policy") return <LegalPage kind="privacy" />;

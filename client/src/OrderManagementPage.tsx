@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
   Check,
@@ -70,7 +70,7 @@ type ShopInfo = {
 };
 type OrderOptions = MerchantOrder["options"];
 type Action = "confirm_payment" | "approve_order" | "start_printing" | "mark_printed" | "mark_failed" | "requeue" | "reject" | "cancel";
-type Filter = "all" | "payment" | "approval" | "queue" | "printing" | "printed" | "failed" | "completed";
+type Filter = "all" | "approval" | "queue" | "printing" | "cash" | "printed" | "failed";
 
 const photoLayouts = [
   { value: "single", label: "1 photo per page" },
@@ -95,14 +95,13 @@ const statusLabels: Record<OrderStatus, string> = {
 };
 
 const filterLabels: Array<{ id: Filter; label: string }> = [
-  { id: "all", label: "All orders" },
-  { id: "payment", label: "Needs payment" },
+  { id: "all", label: "All" },
   { id: "approval", label: "Needs approval" },
-  { id: "queue", label: "Print queue" },
+  { id: "queue", label: "Queued" },
   { id: "printing", label: "Printing" },
-  { id: "printed", label: "Ready for pickup" },
+  { id: "cash", label: "Awaiting cash" },
+  { id: "printed", label: "Printed" },
   { id: "failed", label: "Failed" },
-  { id: "completed", label: "Closed" },
 ];
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
@@ -120,20 +119,18 @@ function visibleInFilter(order: MerchantOrder, filter: Filter): boolean {
   switch (filter) {
     case "all":
       return true;
-    case "payment":
-      return order.status === "awaiting_payment" || order.status === "awaiting_cash";
     case "approval":
-      return order.status === "needs_approval";
+      return order.status === "needs_approval" || order.status === "awaiting_payment";
     case "queue":
-      return order.status === "queued" || order.status === "failed";
+      return order.status === "queued";
     case "printing":
       return order.status === "printing";
+    case "cash":
+      return order.status === "awaiting_cash";
     case "printed":
       return order.status === "printed";
     case "failed":
       return order.status === "failed";
-    case "completed":
-      return order.status === "printed" || order.status === "rejected" || order.status === "cancelled" || order.status === "expired";
   }
 }
 
@@ -175,13 +172,11 @@ export function OrderManagementPage() {
   const [orders, setOrders] = useState<MerchantOrder[]>([]);
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("order") ?? "");
+  const localToday = (() => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; })();
+  const [dateFrom, setDateFrom] = useState(localToday);
+  const [dateTo, setDateTo] = useState(localToday);
   const [page, setPage] = useState(1);
-  const [alertsEnabled, setAlertsEnabled] = useState(false);
-  const knownOrderCodes = useRef<Set<string> | null>(null);
-  const knownStatuses = useRef<Map<string, OrderStatus> | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyOrderId, setBusyOrderId] = useState("");
@@ -207,38 +202,6 @@ export function OrderManagementPage() {
       const orderBody = await orderResponse.json() as { orders: MerchantOrder[] };
       const shopBody = await shopResponse.json() as { shop: ShopInfo };
       setOrders(orderBody.orders);
-      const currentCodes = new Set(orderBody.orders.map((order) => order.code));
-      const preferences = shopBody.shop.notificationPreferences;
-      if (!background && preferences) setAlertsEnabled(preferences.newOrder || preferences.printFailed || preferences.uploadSound);
-      if (knownOrderCodes.current && background && alertsEnabled) {
-        const incoming = orderBody.orders.filter((order) => !knownOrderCodes.current?.has(order.code));
-        const failedNow = orderBody.orders.filter((order) => knownStatuses.current?.get(order.code) !== "failed" && order.status === "failed");
-        if (incoming.length && preferences?.newOrder) {
-          const message = `${incoming.length} new order${incoming.length === 1 ? "" : "s"}: ${incoming.map((order) => `#${order.code}`).join(", ")}`;
-          setNotice(message);
-          if ("Notification" in window && Notification.permission === "granted") new Notification("Printly · New order", { body: message });
-        }
-        if (failedNow.length && preferences?.printFailed) {
-          const message = `${failedNow.length} print job${failedNow.length === 1 ? "" : "s"} failed: ${failedNow.map((order) => `#${order.code}`).join(", ")}`;
-          setNotice(message);
-          if ("Notification" in window && Notification.permission === "granted") new Notification("Printly · Print issue", { body: message });
-        }
-        if ((incoming.length && preferences?.uploadSound) || (failedNow.length && preferences?.printFailed)) {
-          try {
-            const AudioContextClass = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-            if (AudioContextClass) {
-              const audio = new AudioContextClass();
-              const oscillator = audio.createOscillator();
-              const gain = audio.createGain();
-              oscillator.frequency.value = 880;
-              gain.gain.value = 0.08;
-              oscillator.connect(gain); gain.connect(audio.destination); oscillator.onended = () => { void audio.close(); }; oscillator.start(); oscillator.stop(audio.currentTime + 0.16);
-            }
-          } catch { /* Browser audio may be unavailable until the dashboard is interacted with. */ }
-        }
-      }
-      knownOrderCodes.current = currentCodes;
-      knownStatuses.current = new Map(orderBody.orders.map((order) => [order.code, order.status]));
       setShop(shopBody.shop);
       setError("");
     } catch (reason) {
@@ -247,7 +210,7 @@ export function OrderManagementPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [alertsEnabled]);
+  }, []);
 
   useEffect(() => {
     void loadOrders();
@@ -268,10 +231,12 @@ export function OrderManagementPage() {
   const pageCount = Math.max(1, Math.ceil(matchingOrders.length / pageSize));
   const visibleOrders = matchingOrders.slice((page - 1) * pageSize, page * pageSize);
   const counts = useMemo(() => ({
-    payment: orders.filter((order) => order.status === "awaiting_payment" || order.status === "awaiting_cash").length,
-    approval: orders.filter((order) => order.status === "needs_approval").length,
-    queue: orders.filter((order) => order.status === "queued" || order.status === "failed").length,
+    approval: orders.filter((order) => order.status === "needs_approval" || order.status === "awaiting_payment").length,
+    queue: orders.filter((order) => order.status === "queued").length,
     printing: orders.filter((order) => order.status === "printing").length,
+    cash: orders.filter((order) => order.status === "awaiting_cash").length,
+    printed: orders.filter((order) => order.status === "printed").length,
+    failed: orders.filter((order) => order.status === "failed").length,
   }), [orders]);
 
   async function updateOrder(order: MerchantOrder, action: Action) {
@@ -390,21 +355,15 @@ export function OrderManagementPage() {
           <div className="settings-breadcrumb"><span>Shop management</span><ChevronRight size={13} /><b>Orders</b></div>
           <div className="settings-title-row order-title-row">
             <div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR COUNTER, ONLINE</div><h1>Order queue</h1><p>Review files, confirm payment, and move jobs through printing.</p></div>
-            <div><button className="order-refresh-button" type="button" onClick={async () => { if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission(); setAlertsEnabled((enabled) => !enabled); }}>{alertsEnabled ? "Disable alerts" : "Enable new-order alerts"}</button><button className="order-refresh-button" type="button" disabled={refreshing} onClick={() => void loadOrders(true)}><RefreshCw className={refreshing ? "spin" : ""} size={14} /> Refresh</button></div>
+            <button className="order-refresh-button" type="button" disabled={refreshing} onClick={() => void loadOrders(true)}><RefreshCw className={refreshing ? "spin" : ""} size={14} /> Refresh</button>
           </div>
           {error && <div className="form-alert settings-alert" role="alert">{error}</div>}
           {notice && <div className="success-alert" role="status"><Check size={16} />{notice}</div>}
-          <div className="order-count-strip">
-            <span><b>{counts.payment}</b> awaiting payment</span>
-            <span><b>{counts.approval}</b> awaiting approval</span>
-            <span><b>{counts.queue}</b> in queue</span>
-            <span><b>{counts.printing}</b> printing</span>
-          </div>
           <div className="order-filter-tabs" role="tablist" aria-label="Filter orders">
-            {filterLabels.map((item) => <button key={item.id} type="button" role="tab" aria-selected={filter === item.id} className={filter === item.id ? "active" : ""} onClick={() => { setFilter(item.id); setPage(1); }}>{item.label}</button>)}
+            {filterLabels.map((item) => <button key={item.id} type="button" role="tab" aria-selected={filter === item.id} className={filter === item.id ? "active" : ""} onClick={() => { setFilter(item.id); setPage(1); }}>{item.label}<span>{item.id === "all" ? orders.length : counts[item.id]}</span></button>)}
           </div>
           <div className="order-search-controls">
-            <label>Search order or file<input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Pickup code or filename" /></label>
+            <label>Search file name or order id<input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search file name or order id…" /></label>
             <label>From<input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label>
             <label>To<input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label>
           </div>

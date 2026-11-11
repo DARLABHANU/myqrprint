@@ -126,6 +126,22 @@ shopsRouter.patch("/online", async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
+shopsRouter.patch("/notifications", async (request, response, next) => {
+  const parsed = z.object({
+    newOrder: z.boolean().optional(),
+    printFailed: z.boolean().optional(),
+    uploadSound: z.boolean().optional(),
+    dailyEmail: z.boolean().optional(),
+  }).strict().refine((value) => Object.keys(value).length > 0).safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ error: "Choose at least one notification preference." }); return; }
+  try {
+    const updates = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [`notificationPreferences.${key}`, value]));
+    const shop = await Shop.findOneAndUpdate({ ownerId: request.session.userId }, { $set: updates }, { new: true }).select("notificationPreferences");
+    if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
+    response.json({ notificationPreferences: shop.notificationPreferences });
+  } catch (error) { next(error); }
+});
+
 shopsRouter.get("/me", async (request, response, next) => {
   try {
     const shop = await Shop.findOne({ ownerId: request.session.userId });
