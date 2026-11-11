@@ -102,7 +102,20 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
         const link = new URL("/verify-email", request.get("origin") ?? "http://localhost:5173");
         link.searchParams.set("email", email);
         link.searchParams.set("token", verificationToken);
-        await sendAccountEmail(email, "Verify your Printly email", `Verify your email within 30 minutes: ${link.toString()}`);
+        try {
+          await sendAccountEmail(email, "Verify your Printly email", `Verify your email within 30 minutes: ${link.toString()}`);
+        } catch (mailError) {
+          // Do not leave an unverified account behind when delivery fails; that
+          // would make a retry look like a duplicate registration.
+          await Shop.deleteOne({ ownerId: user._id });
+          await User.deleteOne({ _id: user._id });
+          const code = typeof mailError === "object" && mailError !== null && "code" in mailError
+            ? String(mailError.code)
+            : "unknown";
+          console.error("Account verification email could not be delivered:", code);
+          response.status(503).json({ error: "Email delivery is unavailable from the current server. Registration was not completed; please try again later or contact support." });
+          return;
+        }
       }
       response.status(201).json({ user: { id: String(user._id), ownerName, email }, verificationRequired: true, ...(!isMailConfigured() ? { verificationToken } : {}) });
       return;

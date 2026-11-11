@@ -11,6 +11,11 @@ export async function sendAccountEmail(to: string, subject: string, text: string
     host: process.env.SMTP_HOST,
     port,
     secure: process.env.SMTP_SECURE === "true",
+    // Fail quickly when the hosting provider blocks SMTP egress. Without
+    // explicit limits Nodemailer can leave account forms waiting for minutes.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD ?? "" } : undefined,
   });
   await transport.sendMail({ from: process.env.SMTP_FROM, to, subject, text });
