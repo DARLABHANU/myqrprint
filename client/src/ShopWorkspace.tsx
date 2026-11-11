@@ -121,7 +121,23 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  const body = response.status === 204 ? undefined : await response.json() as { error?: string; details?: Record<string, string[]> };
+  let body: { error?: string; details?: Record<string, string[]> } | undefined;
+  if (response.status !== 204) {
+    const responseText = await response.text();
+    if (responseText) {
+      try {
+        body = JSON.parse(responseText) as { error?: string; details?: Record<string, string[]> };
+      } catch {
+        if (!response.ok) {
+          const unavailable = [502, 503, 504].includes(response.status);
+          throw new Error(unavailable
+            ? `The service is temporarily unavailable (${response.status}). Please wait a moment and retry.`
+            : `The server returned an unexpected response (${response.status}). Please try again.`);
+        }
+        throw new Error("The server returned an invalid response. Please try again.");
+      }
+    }
+  }
   if (!response.ok) {
     const details = body && "details" in body
       ? Object.values(body.details ?? {}).flat().filter(Boolean).join(" ")
