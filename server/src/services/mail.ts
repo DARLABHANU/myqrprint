@@ -10,12 +10,12 @@ function gmailApiConfigured(): boolean {
     process.env.GMAIL_CLIENT_ID &&
       process.env.GMAIL_CLIENT_SECRET &&
       process.env.GMAIL_REFRESH_TOKEN &&
-      (process.env.EMAIL_FROM || process.env.SMTP_FROM),
+      process.env.EMAIL_FROM,
   );
 }
 
 function senderAddress(): string {
-  return process.env.EMAIL_FROM || process.env.SMTP_FROM || "";
+  return process.env.EMAIL_FROM || "";
 }
 
 export function isMailConfigured(): boolean {

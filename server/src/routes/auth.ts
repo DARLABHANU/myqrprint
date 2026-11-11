@@ -128,7 +128,7 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
     response.status(201).json({ user: { id: String(user._id), ownerName, email }, verificationRequired: false });
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === 11000) {
-      response.status(409).json({ error: "An account with this email already exists." });
+      response.status(409).json({ error: "An account with this email already exists. If an earlier signup did not finish, open Email verification and resend the link after email delivery is configured; otherwise sign in." });
       return;
     }
     next(error);
