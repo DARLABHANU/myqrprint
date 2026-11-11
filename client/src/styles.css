@@ -388,6 +388,8 @@ h1, h2, h3, p { margin-top: 0; }
 .jobs-filter-card .order-filter-tabs button span { min-width:18px; height:18px; display:inline-grid; place-items:center; border-radius:10px; background:#e6ebf2; color:#637086; font-size:9px; }
 .jobs-filter-card .order-filter-tabs button.active { background:#fff; color:#17263c; box-shadow:0 1px 3px #14243c19; }
 .jobs-filter-card .order-filter-tabs button.active span { background:#e3f8ef; color:#078c68; }
+.jobs-filter-card .order-search-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.jobs-filter-card .order-search-controls .jobs-search-field { grid-column:1/-1; }
 .order-search-controls { display:grid; grid-template-columns:minmax(220px,2fr) minmax(150px,1fr) minmax(150px,1fr); align-items:end; gap:11px; }
 .order-search-controls > label { min-width:0; display:grid; gap:6px; color:#6f7f93; font-size:10px; font-weight:600; }
 .order-search-controls input,.order-search-controls select { width:100%; min-width:0; height:39px; padding:0 11px; border:1px solid #e2e8f0; border-radius:9px; outline:none; background:#fff; color:#35445a; font:500 11px "DM Sans",sans-serif; }
@@ -953,11 +955,15 @@ h1, h2, h3, p { margin-top: 0; }
 .printer-page-actions { display:flex; align-items:center; gap:9px; }
 .printer-help-button { min-height:35px; display:inline-flex; align-items:center; gap:7px; padding:0 12px; border:1px solid #e3e9f0; border-radius:8px; background:#fff; color:#56657a; font:650 10px "DM Sans",sans-serif; cursor:pointer; }
 .printer-help-button:hover { background:#f8fafc; }
+.printer-help-primary { border-color:#d71936; background:#d71936; color:#fff; text-decoration:none; box-shadow:0 3px 8px #d7193626; }
+.printer-help-primary:hover { background:#bd1230; }
+.printer-guide-actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:18px; }
 .printer-section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:16px; }
 .printer-section-heading h2 { margin:0; color:#26364b; font:750 15px Manrope,sans-serif; }
 .printer-section-heading p { margin:5px 0 0; color:#8190a4; font-size:10px; }
 .printer-section-heading > button { min-height:34px; display:inline-flex; align-items:center; gap:7px; padding:0 11px; border:1px solid #e4eaf1; border-radius:8px; background:#fff; color:#758398; font:650 10px "DM Sans",sans-serif; }
-.printer-section-heading > button:disabled { opacity:.55; cursor:not-allowed; }
+.printer-section-heading > button { cursor:pointer; }
+.printer-section-heading > button:hover { border-color:#b8c8d9; background:#f8fafc; color:#34465d; }
 .connected-pcs-card { padding:18px; }
 .connected-pcs-empty { min-height:208px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; padding:22px; border:1px dashed #dce5ee; border-radius:12px; color:#78869a; text-align:center; }
 .connected-pcs-empty > span { width:44px; height:44px; display:grid; place-items:center; margin-bottom:4px; border-radius:13px; background:#effaf5; color:#079d72; }
@@ -988,6 +994,7 @@ h1, h2, h3, p { margin-top: 0; }
 .printer-routing-card > .button { margin-top:15px; }
 .registered-printers-card .printer-section-heading > span { color:#8794a6; font-size:10px; }
 .printer-no-registered { min-height:176px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:9px; padding:24px; color:#8391a4; text-align:center; }
+.printer-no-registered p { max-width:430px; }
 .printer-add-form { margin-top:16px; padding-top:18px; border-top:1px solid #e9eef4; }
 .printer-guide-modal ol { display:grid; gap:10px; margin:16px 0 21px; padding-left:20px; color:#66758b; font-size:11px; line-height:1.6; }
 .wallet-management-main { max-width:1000px!important; padding-top:25px!important; }
