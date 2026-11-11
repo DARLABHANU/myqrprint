@@ -14,12 +14,13 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { AccountPage, ShopSettingsPage } from "./ShopWorkspace";
+import { AccountPage, ShopQrCodePage, ShopSettingsPage } from "./ShopWorkspace";
 import { OrderManagementPage } from "./OrderManagementPage";
 import { CustomerOrderPage } from "./CustomerOrderPage";
 import { LegalPage } from "./LegalPage";
 import { PublicContentPage } from "./PublicContentPage";
 import { DashboardTools } from "./DashboardTools";
+import { ReportsDashboardPage } from "./ReportsDashboardPage";
 import { PrinterManagementPage } from "./PrinterManagementPage";
 import { AuthFlowPage } from "./AuthFlowPage";
 import { AdminSubscriptionReviewPage, SubscriptionPage } from "./SubscriptionPages";
@@ -91,6 +92,7 @@ export default function App() {
     "/dashboard/settings/privacy": "privacy-settings",
     "/dashboard/qr-code": "shop-qr-code",
   };
+  if (path === "/dashboard/qr-code") return shopPage(<ShopQrCodePage />);
   if (shopSections[path]) return shopPage(<ShopSettingsPage initialSection={shopSections[path]} />);
   if (path === "/dashboard") return shopPage(<ShopOverviewPage />);
   if (path === "/dashboard/support") return shopPage(<ShopSupportPage />);
@@ -99,7 +101,7 @@ export default function App() {
   if (path === "/dashboard/setting") return shopPage(<ShopSettingsPage />);
   if (path === "/dashboard/orders") return shopPage(<OrderManagementPage />);
   if (path === "/dashboard/payments") return shopPage(<DashboardTools kind="payments" />);
-  if (path === "/dashboard/reports") return shopPage(<DashboardTools kind="reports" />);
+  if (path === "/dashboard/reports") return shopPage(<ReportsDashboardPage />);
   if (path === "/dashboard/printers") return shopPage(<PrinterManagementPage />);
   if (path === "/dashboard/subscription") return shopPage(<SubscriptionPage />);
   if (path === "/admin/subscriptions") return <AdminSubscriptionReviewPage />;

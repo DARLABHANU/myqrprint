@@ -46,6 +46,8 @@ const navGroups = [
 
 function pageTitle(path: string) {
   if (path === "/dashboard" || path === "") return "Overview";
+  if (path.includes("/dashboard/setting")) return "Setting";
+  if (path.endsWith("/support")) return "Help & support";
   if (/\/orders?$|\/jobs$/.test(path)) return "Print jobs";
   if (path.endsWith("/payments")) return "Payments";
   if (path.endsWith("/printers")) return "Printers";

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Shop } from "../models/Shop.js";
 import { SubscriptionRequest } from "../models/SubscriptionRequest.js";
 import { User } from "../models/User.js";
+import { PrintOrder } from "../models/PrintOrder.js";
 
 export const subscriptionsRouter = Router();
 const plans = {
@@ -24,11 +25,19 @@ subscriptionsRouter.get("/shops/subscription", requireLogin, async (request, res
     const shop = await Shop.findOne({ ownerId: request.session.userId });
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
     const pending = await SubscriptionRequest.findOne({ ownerId: request.session.userId, status: "pending" }).sort({ createdAt: -1 });
+    const history = await SubscriptionRequest.find({ ownerId: request.session.userId }).sort({ createdAt: -1 }).limit(100).lean();
+    const orderHistory = await PrintOrder.find({ shopId: shop._id }).select("createdAt status amountPaise").sort({ createdAt: -1 }).limit(5000).lean();
     response.json({
       subscription: { plan: shop.subscriptionPlan, startedAt: shop.subscriptionStartedAt, expiresAt: shop.subscriptionExpiresAt, orderLimit: shop.subscriptionOrderLimit, ordersUsed: shop.subscriptionOrdersUsed, expired: shop.subscriptionExpiresAt <= new Date() || shop.subscriptionOrdersUsed >= shop.subscriptionOrderLimit },
       plans,
       platformUpiId: process.env.PLATFORM_UPI_ID ?? "",
       pendingRequest: pending ? { plan: pending.plan, status: pending.status, createdAt: pending.createdAt } : null,
+      history: [
+        { plan: shop.subscriptionPlan, startedAt: shop.subscriptionStartedAt, expiresAt: shop.subscriptionExpiresAt, orderLimit: shop.subscriptionOrderLimit, ordersUsed: shop.subscriptionOrdersUsed, amountPaise: 0, status: shop.subscriptionExpiresAt > new Date() && shop.subscriptionOrdersUsed < shop.subscriptionOrderLimit ? "active" : "expired", isCurrent: true },
+        ...history.filter((item) => item.status !== "pending").map((item) => ({ plan: item.plan, startedAt: item.createdAt, expiresAt: item.reviewedAt, orderLimit: plans[item.plan].orderLimit, ordersUsed: 0, amountPaise: item.amountPaise, status: item.status, isCurrent: false })),
+      ],
+      invoices: [],
+      usage: { ordersToday: orderHistory.filter((order) => new Date(order.createdAt).toDateString() === new Date().toDateString()).length },
     });
   } catch (error) { next(error); }
 });
