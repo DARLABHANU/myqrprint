@@ -113,7 +113,7 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
             ? String(mailError.code)
             : "unknown";
           console.error("Account verification email could not be delivered:", code);
-          response.status(503).json({ error: "Email delivery is unavailable from the current server. Registration was not completed; please try again later or contact support." });
+          response.status(503).json({ error: "Email delivery is blocked by the current hosting setup. Registration was not completed. Configure an email API provider or enable SMTP on a paid Render instance, then retry." });
           return;
         }
       }
