@@ -154,13 +154,12 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
     shopName: "",
     mobile: "",
     email: "",
-    password: "",
     termsAccepted: false,
   });
   const [error, setError] = useState("");
   const [accountNotice, setAccountNotice] = useState("");
-  const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
-  const [loginCode, setLoginCode] = useState("");
+  const [otpStage, setOtpStage] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -168,24 +167,21 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
     setError("");
     setBusy(true);
     try {
-      const result = await requestJson<{ user: User; verificationRequired?: boolean; verificationToken?: string }>(`/api/auth/${mode}`, {
+      if (otpStage) {
+        await requestJson<{ user: User }>(isRegister ? "/api/auth/register/verify-code" : "/api/auth/login/verify-code", {
+          method: "POST",
+          body: JSON.stringify({ email: values.email, code: otpCode }),
+        });
+        window.location.assign("/dashboard");
+        return;
+      }
+      const result = await requestJson<{ otpRequired: boolean; message: string }>(isRegister ? "/api/auth/register" : "/api/auth/login/request-code", {
         method: "POST",
-        body: JSON.stringify(isRegister ? values : { email: values.email, password: values.password }),
+        body: JSON.stringify(isRegister ? values : { email: values.email }),
       });
-      if (!isRegister && (result as { twoFactorRequired?: boolean }).twoFactorRequired) {
-        setNeedsTwoFactor(true);
-        return;
-      }
-      if (isRegister && result.verificationRequired) {
-        if (result.verificationToken) {
-          const link = new URLSearchParams({ email: values.email, token: result.verificationToken });
-          window.location.assign(`/verify-email?${link.toString()}`);
-          return;
-        }
-        setAccountNotice("Check your email for a verification link. You can request another link from the email verification page.");
-        return;
-      }
-      window.location.assign("/dashboard");
+      setOtpStage(result.otpRequired);
+      setOtpCode("");
+      setAccountNotice(result.message);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to sign in right now.");
     } finally {
@@ -193,12 +189,14 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
     }
   }
 
-  async function verifyLoginCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(""); setBusy(true);
+  async function resendOtp() {
+    setError(""); setBusy(true);
     try {
-      await requestJson<{ user: User }>("/api/auth/login/verify-code", { method: "POST", body: JSON.stringify({ code: loginCode }) });
-      window.location.assign("/dashboard");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not verify this code."); }
+      const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login/request-code";
+      const payload = isRegister ? values : { email: values.email };
+      const result = await requestJson<{ message: string }>(endpoint, { method: "POST", body: JSON.stringify(payload) });
+      setAccountNotice(result.message);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not resend the code."); }
     finally { setBusy(false); }
   }
 
@@ -212,26 +210,28 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
         <a className="back-link" href="/"><ArrowLeft size={15} /> Back to home</a>
         <div className="eyebrow"><span className="eyebrow-dot" /> YOUR SHOP, SIMPLIFIED</div>
         <h1>{isRegister ? "Set up your shop." : "Welcome back."}</h1>
-        <p className="account-intro">{isRegister ? "Create your owner account to configure your shop and print rates." : "Sign in to manage your shop settings and print rates."}</p>
-        {accountNotice && <div className="success-alert" role="status">{accountNotice} <a href={`/verify-email?email=${encodeURIComponent(values.email)}`}>Verify email</a></div>}
-        {needsTwoFactor ? <form className="account-form" onSubmit={(event) => void verifyLoginCode(event)}><p>Enter the six-digit code sent to {values.email}.</p><label>Sign-in code<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={loginCode} onChange={(event) => setLoginCode(event.target.value)} /></label>{error && <div className="form-alert" role="alert">{error}</div>}<button className="button button-dark account-submit" type="submit" disabled={busy}>{busy ? "Verifying…" : "Verify and sign in"}</button></form> : <form className="account-form" onSubmit={submit}>
-          {isRegister && <>
+        <p className="account-intro">{isRegister ? "Create your owner account. We’ll verify your email with a one-time code." : "Sign in securely with a one-time code sent to your email."}</p>
+        {accountNotice && <div className="success-alert" role="status">{accountNotice}</div>}
+        <form className="account-form" onSubmit={submit}>
+          {isRegister && !otpStage && <>
             <label>Owner name<input autoComplete="name" required minLength={2} maxLength={100} value={values.ownerName} onChange={(event) => setValues({ ...values, ownerName: event.target.value })} /></label>
             <label>Shop name<input autoComplete="organization" required minLength={2} maxLength={100} value={values.shopName} onChange={(event) => setValues({ ...values, shopName: event.target.value })} /></label>
             <label>Mobile number<input autoComplete="tel" type="tel" required minLength={7} maxLength={20} value={values.mobile} onChange={(event) => setValues({ ...values, mobile: event.target.value })} /></label>
           </>}
-          <label>Email address<input autoComplete="email" type="email" required maxLength={254} value={values.email} onChange={(event) => setValues({ ...values, email: event.target.value })} /></label>
-          <label>Password<input autoComplete={isRegister ? "new-password" : "current-password"} type="password" required minLength={12} maxLength={128} value={values.password} onChange={(event) => setValues({ ...values, password: event.target.value })} /><small>Use at least 12 characters.</small></label>
-          {isRegister && <label className="terms-acceptance"><input type="checkbox" required checked={values.termsAccepted} onChange={(event) => setValues({ ...values, termsAccepted: event.target.checked })} /><span>I agree to the <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Notice</a>. These are draft policies for the local development preview.</span></label>}
+          <label>Email address<input autoComplete="email" type="email" required maxLength={254} readOnly={otpStage} value={values.email} onChange={(event) => setValues({ ...values, email: event.target.value })} /></label>
+          {otpStage && <label>Six-digit code<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={otpCode} onChange={(event) => setOtpCode(event.target.value)} /><small>Enter the code from your email. It expires in 10 minutes.</small></label>}
+          {isRegister && !otpStage && <label className="terms-acceptance"><input type="checkbox" required checked={values.termsAccepted} onChange={(event) => setValues({ ...values, termsAccepted: event.target.checked })} /><span>I agree to the <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Notice</a>. These are draft policies for the local development preview.</span></label>}
           {error && <div className="form-alert" role="alert">{error}</div>}
           <button className="button button-dark account-submit" type="submit" disabled={busy}>
             {busy ? <LoaderCircle className="spin" size={16} /> : null}
-            {busy ? "Please wait…" : isRegister ? "Create shop account" : "Sign in"}
+            {busy ? "Please wait…" : otpStage ? "Verify code and continue" : isRegister ? "Send verification code" : "Send sign-in code"}
             {!busy && <ChevronRight size={17} />}
           </button>
-        </form>}
+          {otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => void resendOtp()}>Resend code</button>}
+          {otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => { setOtpStage(false); setAccountNotice(""); setError(""); }}>Use a different email</button>}
+        </form>
         <p className="account-switch">{isRegister ? "Already have an account?" : "New to Printly?"} <a href={isRegister ? "/login" : "/register"}>{isRegister ? "Sign in" : "Create an account"}</a></p>
-        {!isRegister && <p className="account-switch"><a href="/forgot-password">Forgot your password?</a></p>}
+        {!isRegister && <p className="account-switch"><a href="/forgot-password">Need to set or reset a password?</a></p>}
         <div className="account-security"><ShieldCheck size={15} /> Your account is protected with a secure, private session.</div>
       </main>
       <p className="account-footer">Direct shop payments. Your customers’ files stay private.</p>

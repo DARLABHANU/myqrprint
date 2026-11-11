@@ -5,5 +5,6 @@ declare module "express-session" {
     userId?: string;
     customerFlow?: boolean;
     pendingTwoFactorUserId?: string;
+    pendingOtpUserId?: string;
   }
 }
