@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, BarChart3, Building2, CircleHelp, Clock3, CreditCard, FileText, Printer, Settings2, ShieldCheck, Smartphone, Wallet, PlayCircle, Download } from "lucide-react";
+import { ArrowRight, Building2, Clock3, CreditCard, FileText, Printer, ShieldCheck, Smartphone, Wallet, PlayCircle, Download } from "lucide-react";
 
 type Order = { id?: string; code: string; status: string; paymentStatus: string; paymentMethod: string; amountPaise: number; createdAt: string; options?: { colour: boolean; copies: number }; files: Array<{ name?: string; pageCount: number }> };
 type Shop = { displayName: string; ownerName?: string; slug: string };
@@ -50,16 +50,26 @@ export function ShopOverviewPage() {
 }
 
 const guides = [
-  ["Set up your shop", "Add your shop name, address, contact information, and customer order link. Switch the shop online when you are ready to accept jobs."],
-  ["Set print prices", "Enable the paper sizes you offer, set B&W and colour prices, and choose whether double-sided printing is available. Use the quote calculator to check an example."],
-  ["Share your QR code", "Open Shop settings → Customer QR & sharing. Download a poster, print or save it as PDF, copy the customer link, or share it through WhatsApp."],
-  ["Review and print jobs", "Open Print jobs to inspect uploaded files and print options. Verify UPI payments in your own payment app before confirming them. Cash is confirmed after collection at the counter."],
-  ["Manage file privacy", "Choose a pending-file retention period in Shop settings. Completed or cancelled uploads are removed by the cleanup process; keep jobs active while you still need their files."],
-  ["Configure printers", "Add simulated printers to explore routing, or save a network printer address for later. Physical printing needs a compatible desktop print agent, which is not included in this build yet."],
+  ["Create your account", "Register your shop with your name, shop name, email, mobile number, and password. Verify the six-digit code sent to your email. Your demo starts after verification."],
+  ["Fill in your shop profile", "Add your public shop name, phone, address, city, state, and PIN code. These details help customers identify your counter and pickup location."],
+  ["Set paper sizes and print rates", "Choose the paper sizes you offer, enable colour or both-sided printing where available, and set a rate for each print combination."],
+  ["Choose how customers pay", "Add your shop UPI ID for direct payment or enable cash at the counter. Verify UPI payments in your own payment app before confirming an order."],
+  ["Connect your printers", "The Printers page lets you save printer capabilities and routing rules. Physical printing and PC discovery need the Printly desktop agent, which is not available in this build yet."],
+  ["Put up your QR code", "Open My QR code to copy your customer link, share it on WhatsApp, or create and download a counter poster."],
+  ["How a customer orders", "Customers scan the shop QR, upload a PDF or photos, choose print options, review the estimate, and submit their order."],
+  ["Handle print orders", "Use Print jobs to review the uploaded files and settings. Accept or reject jobs, update their status, and confirm payment after you receive it."],
+  ["Track payments and reports", "Payments records the order payment status. Reports summarizes completed jobs, pages, revenue, payment methods, and uploaded file types."],
+  ["Your plan and renewing", "My subscription shows your plan, order usage, expiry, plan history, and available upgrade options."],
 ];
 
 export function ShopSupportPage() {
-  return <div className="workspace-page"><header className="workspace-header"><a className="brand" href="/"><span className="brand-mark"><CircleHelp size={20}/></span><span>printly.</span></a><a className="back-link" href="/dashboard">Dashboard</a></header><main className="settings-main"><div className="eyebrow"><span className="eyebrow-dot"/> SHOP MANAGEMENT</div><h1>Help & support</h1><p>Guides for setting up your shop and handling customer print jobs.</p><div className="overview-shortcuts"><a href="/dashboard/orders"><Printer/>Open print jobs</a><a href="/dashboard/settings"><Settings2/>Shop settings</a><a href="/dashboard/reports"><BarChart3/>Reports</a></div>{guides.map(([title, content], index) => <details className="support-guide" key={title}><summary><span>{String(index + 1).padStart(2, "0")}</span>{title}</summary><p>{content}</p></details>)}<section className="settings-card"><h2>Contact support</h2><p>Support email and phone are not configured for this local development build. For account-specific issues, use the project owner’s configured support channel.</p></section></main></div>;
+  const [step, setStep] = useState(0);
+  const [video, title, detail] = step === 4 ? ["https://www.youtube.com/watch?v=A9XypZ1avjI", "Connect your printers", "Connect your printer and set up automatic printing"] : ["https://www.youtube.com/playlist?list=PLSF3VCpMK5cU", "Register your shop", "Set up your shop and dashboard"];
+  return <div className="workspace-page"><main className="settings-main support-page-main"><header className="support-page-heading"><div><h1>Help & support</h1><p>Setup, printer or payment — get help with your shop workspace.</p></div></header>
+    <section className="support-contact-grid"><article><span>WhatsApp</span><b>Chat with support</b><small>Support contact is not configured yet</small><button type="button" disabled>Chat now</button></article><article><span>Phone</span><b>Call support</b><small>Support contact is not configured yet</small><button type="button" disabled>Call</button></article><article><span>Email</span><b>Email support</b><small>Support contact is not configured yet</small><button type="button" disabled>Send email</button></article></section>
+    <section className="settings-card support-video-card"><header><div><h2>Video guides</h2><p>Step-by-step tutorials</p></div></header><div className="support-video-grid"><a href="https://www.youtube.com/playlist?list=PLSF3VCpMK5cU" target="_blank" rel="noreferrer"><span>Setup</span><b>Register your shop</b><small>Open setup playlist <ArrowRight size={13}/></small></a><a href="https://www.youtube.com/watch?v=A9XypZ1avjI" target="_blank" rel="noreferrer"><span>Printers</span><b>Connect your printer & auto print</b><small>Watch printer guide <ArrowRight size={13}/></small></a></div></section>
+    <section className="settings-card support-guide-card"><header><div><h2>User guide</h2><p>Set up and run your shop in 10 steps</p></div><span>Step {step + 1} of {guides.length}</span></header><div className="support-guide-layout"><nav aria-label="User guide steps">{guides.map(([title], index) => <button type="button" className={step === index ? "active" : ""} key={title} onClick={() => setStep(index)}><span>{index + 1}</span>{title}</button>)}</nav><article><small>STEP {String(step + 1).padStart(2, "0")}</small><h3>{guides[step][0]}</h3><p>{guides[step][1]}</p><div className="support-guide-actions"><button type="button" disabled={step === 0} onClick={() => setStep((value) => Math.max(0, value - 1))}>Previous</button><button type="button" disabled={step === guides.length - 1} onClick={() => setStep((value) => Math.min(guides.length - 1, value + 1))}>Next step <ArrowRight size={14}/></button></div>{step === 4 && <a className="support-guide-video-link" href={video} target="_blank" rel="noreferrer">{title}: {detail}</a>}</article></div></section>
+  </main></div>;
 }
 
 export function ShopWalletPage() {
