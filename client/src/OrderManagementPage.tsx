@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
   Check,
-  ChevronRight,
   CircleHelp,
   Clock3,
   LoaderCircle,
@@ -172,10 +171,11 @@ export function OrderManagementPage() {
   const [orders, setOrders] = useState<MerchantOrder[]>([]);
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("order") ?? "");
+  const orderQuery = new URLSearchParams(window.location.search).get("order") ?? "";
+  const [search, setSearch] = useState(orderQuery);
   const localToday = (() => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; })();
-  const [dateFrom, setDateFrom] = useState(localToday);
-  const [dateTo, setDateTo] = useState(localToday);
+  const [dateFrom, setDateFrom] = useState(orderQuery ? "" : localToday);
+  const [dateTo, setDateTo] = useState(orderQuery ? "" : localToday);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -352,21 +352,22 @@ export function OrderManagementPage() {
           <div className="sidebar-help"><CircleHelp size={17} /><b>Payment safety</b><p>UPI receipts are not verified automatically. Confirm payment only after checking your account.</p></div>
         </aside>
         <main className="settings-main order-workspace-main">
-          <div className="settings-breadcrumb"><span>Shop management</span><ChevronRight size={13} /><b>Orders</b></div>
           <div className="settings-title-row order-title-row">
-            <div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR COUNTER, ONLINE</div><h1>Order queue</h1><p>Review files, confirm payment, and move jobs through printing.</p></div>
+            <h1>Print jobs</h1>
             <button className="order-refresh-button" type="button" disabled={refreshing} onClick={() => void loadOrders(true)}><RefreshCw className={refreshing ? "spin" : ""} size={14} /> Refresh</button>
           </div>
           {error && <div className="form-alert settings-alert" role="alert">{error}</div>}
           {notice && <div className="success-alert" role="status"><Check size={16} />{notice}</div>}
-          <div className="order-filter-tabs" role="tablist" aria-label="Filter orders">
-            {filterLabels.map((item) => <button key={item.id} type="button" role="tab" aria-selected={filter === item.id} className={filter === item.id ? "active" : ""} onClick={() => { setFilter(item.id); setPage(1); }}>{item.label}<span>{item.id === "all" ? orders.length : counts[item.id]}</span></button>)}
-          </div>
-          <div className="order-search-controls">
-            <label>Search file name or order id<input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search file name or order id…" /></label>
-            <label>From<input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label>
-            <label>To<input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label>
-          </div>
+          <section className="jobs-filter-card">
+            <div className="order-filter-tabs" role="tablist" aria-label="Filter print jobs">
+              {filterLabels.map((item) => <button key={item.id} type="button" role="tab" aria-selected={filter === item.id} className={filter === item.id ? "active" : ""} onClick={() => { setFilter(item.id); setPage(1); }}>{item.label}<span>{item.id === "all" ? orders.length : counts[item.id]}</span></button>)}
+            </div>
+            <div className="order-search-controls">
+              <label className="jobs-search-field">Search file name or order id<input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search file name or order id…" /></label>
+              <label>From<input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label>
+              <label>To<input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label>
+            </div>
+          </section>
           {loading ? <div className="workspace-loading"><LoaderCircle className="spin" size={22} /> Loading orders…</div>
             : visibleOrders.length === 0 ? <div className="orders-empty"><Printer size={24} /><b>{orders.length ? "No orders in this view" : "No customer orders yet"}</b><p>{orders.length ? "Choose another filter to see more orders." : "New orders from your customer page will appear here."}</p></div>
               : <><div className="merchant-order-list">

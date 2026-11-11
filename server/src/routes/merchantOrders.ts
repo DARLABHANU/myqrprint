@@ -15,6 +15,7 @@ export const merchantOrdersRouter = Router();
 const uploadDirectory = join(process.cwd(), "data", "uploads");
 const actionSchema = z.object({
   action: z.enum(["confirm_payment", "approve_order", "start_printing", "mark_printed", "mark_failed", "requeue", "reject", "cancel"]),
+  note: z.string().trim().max(300).optional(),
 }).strict();
 const optionsSchema = z.object({
   paperSize: z.enum(["A3", "A4", "A5", "Legal"]),
@@ -159,7 +160,7 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
       actorType: "merchant",
       timestamp: new Date(),
       note: parsedBody.data.action === "confirm_payment"
-        ? `Shopkeeper manually confirmed ${order.paymentMethod === "upi" ? "UPI payment" : "cash"}.`
+        ? `Shopkeeper manually confirmed ${order.paymentMethod === "upi" ? "UPI payment" : "cash"}.${parsedBody.data.note ? ` ${parsedBody.data.note}` : ""}`
         : parsedBody.data.action === "reject" && nextState.paymentStatus === "paid"
           ? "Order rejected after payment confirmation; merchant must arrange any refund directly."
           : undefined,
