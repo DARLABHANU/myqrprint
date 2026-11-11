@@ -793,6 +793,7 @@ h1, h2, h3, p { margin-top: 0; }
   .shop-dashboard-topbar { height:60px; padding:0 14px; }
   .shop-settings-tabs { top:60px; }
   .shop-shell-loading { top:60px; left:0; }
+  .payment-kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media print { .shop-dashboard-sidebar,.shop-dashboard-topbar,.shop-settings-tabs,.dashboard-tool-actions,.order-search-controls,.order-filter-tabs,.order-pagination,.shop-dashboard-toast { display:none!important; } .shop-dashboard-shell { display:block; background:#fff; } .shop-dashboard-content .settings-main { padding:0; } .report-print-list { display:block; } }
 @media(max-width:900px) {
