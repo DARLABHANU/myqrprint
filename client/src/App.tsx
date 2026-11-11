@@ -90,7 +90,6 @@ export default function App() {
     "/dashboard/settings/profile": "shop-profile",
     "/dashboard/settings/security": "security-settings",
     "/dashboard/settings/privacy": "privacy-settings",
-    "/dashboard/qr-code": "shop-qr-code",
   };
   if (path === "/dashboard/qr-code") return shopPage(<ShopQrCodePage />);
   if (shopSections[path]) return shopPage(<ShopSettingsPage initialSection={shopSections[path]} />);
