@@ -27,7 +27,10 @@ reference site's proprietary materials.
 2. Copy `server/.env.example` to `server/.env`. Replace `SESSION_SECRET` with a
    random secret of at least 32 characters before starting the API.
    To enable account verification, password resets, and email two-step sign-in,
-   configure the SMTP settings in `server/.env`. To enable subscription checkout,
+   configure Gmail API OAuth (`GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`,
+   `GMAIL_REFRESH_TOKEN`, and `EMAIL_FROM`) in `server/.env`. The Gmail API sends
+   over HTTPS and works on Render Free; SMTP remains an optional fallback on
+   hosts that allow outbound SMTP. To enable subscription checkout,
    set `PLATFORM_UPI_ID` and `PLATFORM_ADMIN_EMAIL`; the configured admin reviews
    UPI references at `/admin/subscriptions` and activates plans after confirming
    payment in the platform UPI account.
@@ -76,7 +79,8 @@ the app has not yet been verified against a production-like deployment.
 Passwords must be at least 12 characters. Pricing is stored in integer paise;
 duplex prices are per physical sheet, so an odd final page uses one sheet.
 
-Email verification is not connected yet. The terms and privacy pages are
+Email delivery supports Gmail API OAuth and SMTP. Render Free blocks outbound
+SMTP ports, so use Gmail API OAuth there. The terms and privacy pages are
 development drafts; review and replace them before public launch.
 
 Run `npm run typecheck`, `npm test`, and `npm run build` to validate the app.

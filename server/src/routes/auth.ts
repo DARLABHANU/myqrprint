@@ -113,7 +113,11 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
             ? String(mailError.code)
             : "unknown";
           console.error("Account verification email could not be delivered:", code);
-          response.status(503).json({ error: "Email delivery is blocked by the current hosting setup. Registration was not completed. Configure an email API provider or enable SMTP on a paid Render instance, then retry." });
+          const gmailOAuthConfigured = Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN);
+          const errorMessage = code === "ETIMEDOUT" && !gmailOAuthConfigured
+            ? "Gmail SMTP cannot connect from this Render Free service. Registration was not completed. Configure Gmail API OAuth or enable SMTP on a paid Render instance, then retry."
+            : "The verification email could not be sent. Registration was not completed. Check the Gmail API OAuth credentials and sender configured in Render, then retry.";
+          response.status(503).json({ error: errorMessage });
           return;
         }
       }
