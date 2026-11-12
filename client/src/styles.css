@@ -1156,3 +1156,5 @@ h1, h2, h3, p { margin-top: 0; }
   .customer-action-bar { padding-right: 12px; padding-left: 12px; }
   .customer-action-inner > button { min-width: 118px; padding: 0 12px; }
 }
+
+.agent-pairing-code{margin:14px 0;padding:16px 18px;border:1px solid #a9e9d3;border-radius:12px;background:#effbf6;display:flex;align-items:center;justify-content:space-between;gap:14px}.agent-pairing-code>div{display:grid;gap:5px}.agent-pairing-code b{font:800 27px Manrope,sans-serif;letter-spacing:.2em;color:#07865f}.agent-pairing-code small{font-size:12px;color:#64748b}.agent-pairing-code button{border:1px solid #b8e3d4;background:#fff;border-radius:8px;padding:9px 13px;color:#087a59;font-weight:700;cursor:pointer}.connected-pcs-card .printer-page-actions{display:flex;gap:8px;flex-wrap:wrap}.connected-pcs-card .merchant-order-heading>b{display:flex;align-items:center;gap:7px}

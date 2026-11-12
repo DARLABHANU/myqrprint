@@ -3,7 +3,7 @@ services:
     name: printly-api
     runtime: node
     plan: free
-    buildCommand: npm ci --include=dev && npm run build --workspace=server
+    buildCommand: npm ci --include=dev && npm run build --workspace=@printly/contracts && npm run build --workspace=server
     startCommand: npm run start --workspace=server
     healthCheckPath: /api/health
     envVars:

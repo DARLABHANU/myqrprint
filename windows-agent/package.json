@@ -1,0 +1,25 @@
+{
+  "name": "printly-windows-agent",
+  "private": true,
+  "version": "0.1.1",
+  "type": "module",
+  "main": ".vite/build/main.cjs",
+  "scripts": {
+    "dev": "electron-forge start",
+    "build": "electron-forge make",
+    "make": "electron-forge make",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@printly/contracts": "0.1.0",
+    "pdfjs-dist": "^6.5.438"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^8.0.1",
+    "@electron-forge/maker-squirrel": "^8.0.1",
+    "@electron-forge/plugin-vite": "^8.0.1",
+    "electron": "^45.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

@@ -50,7 +50,7 @@ function requireOwner(request: Request, response: Response, next: NextFunction) 
 merchantOrdersRouter.use(requireOwner);
 
 async function findOwnerShop(request: Request) {
-  return Shop.findOne({ ownerId: request.session.userId }).select("_id autoApproveAfterPayment notificationPreferences");
+  return Shop.findOne({ ownerId: request.session.userId }).select("_id autoApproveAfterPayment notificationPreferences fileRetentionHours");
 }
 
 function orderSummary(order: InstanceType<typeof PrintOrder>, availableUploads: Set<string>) {
@@ -152,6 +152,12 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
 
     order.status = nextState.status;
     order.paymentStatus = nextState.paymentStatus;
+    if (parsedBody.data.action === "requeue") {
+      order.agentDeviceId = undefined;
+      order.assignedPrinterId = undefined;
+      order.agentLeaseId = undefined;
+      order.agentLeaseExpiresAt = undefined;
+    }
     if (["printed", "rejected", "cancelled"].includes(nextState.status)) {
       await CustomerUpload.updateMany({ orderId: order._id, state: "attached" }, { $set: { expiresAt: new Date() } });
     }
@@ -169,6 +175,10 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
       order.events.push({ type: "auto_approve_order", actorType: "system", timestamp: new Date(), note: "Shop setting automatically approved this payment-confirmed order." });
     }
     await order.save();
+    if (parsedBody.data.action === "requeue") {
+      const expiresAt = new Date(Date.now() + Number(shop.fileRetentionHours ?? 24) * 60 * 60 * 1000);
+      await CustomerUpload.updateMany({ orderId: order._id, state: "attached" }, { $set: { expiresAt } });
+    }
     const availableUploads = await CustomerUpload.find({
       _id: { $in: order.files.map((file) => file.uploadId) },
       shopId: shop._id,

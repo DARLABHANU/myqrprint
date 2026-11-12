@@ -1,12 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { CircleHelp, Download, LoaderCircle, Plus, Printer, RefreshCw, Save, Trash2 } from "lucide-react";
+import { CircleHelp, LoaderCircle, Monitor, Plus, Printer, RefreshCw, Save, Trash2 } from "lucide-react";
 
-type PrinterItem = { _id: string; name: string; address: string; protocol: "simulated" | "ipp"; status: "ready" | "offline"; supportsColour: boolean; supportsDuplex: boolean; paperSizes: string[] };
+type PrinterItem = { _id: string; name: string; address: string; protocol: "simulated" | "ipp" | "windows"; status: "ready" | "offline"; supportsColour: boolean; supportsDuplex: boolean; paperSizes: string[]; agentDeviceId?: string; systemName?: string };
+type ConnectedDevice = { id: string; deviceName: string; agentVersion: string; status: "online" | "offline"; lastSeenAt?: string; createdAt: string };
 type PrintRoute = { paperSize: string; colour: boolean; duplex: boolean; printerId: string };
 type PaperRate = { blackWhiteSimplexPaise: number; colourSimplexPaise: number; blackWhiteDuplexSheetPaise: number; colourDuplexSheetPaise: number };
 type ShopOptions = { enabledPaperSizes: string[]; colourEnabled: boolean; duplexEnabled: boolean; rates: Record<string, PaperRate> };
 const paperSizes = ["A4", "Legal", "A5", "A3"];
 const money = (paise: number) => `₹${(paise / 100).toFixed(paise % 100 === 0 ? 0 : 2)}`;
+type DesktopBridge = { pair: (code: string, apiUrl: string) => Promise<{ connected: boolean; deviceName?: string; shopName?: string }> };
+const desktopBridge = (window as Window & { printly?: DesktopBridge }).printly;
+const agentApiUrl = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" ? "http://localhost:4000" : "https://printly-api.onrender.com";
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, credentials: "same-origin", headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers } });
@@ -17,6 +21,7 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function PrinterManagementPage() {
   const [printers, setPrinters] = useState<PrinterItem[]>([]);
+  const [devices, setDevices] = useState<ConnectedDevice[]>([]);
   const [routes, setRoutes] = useState<PrintRoute[]>([]);
   const [shop, setShop] = useState<ShopOptions | null>(null);
   const [name, setName] = useState("");
@@ -30,19 +35,20 @@ export function PrinterManagementPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [guideOpen, setGuideOpen] = useState(false);
 
   async function load(background = false) {
     if (background) setRefreshing(true); else setLoading(true);
     setError("");
     try {
-      const [printerData, shopData] = await Promise.all([
+      const [printerData, shopData, deviceData] = await Promise.all([
         json<{ printers: PrinterItem[]; routes: Array<PrintRoute & { printerId: string }> }>("/api/shops/printers"),
         json<{ shop: ShopOptions }>("/api/shops/me"),
+        json<{ devices: ConnectedDevice[] }>("/api/agent/devices"),
       ]);
       setPrinters(printerData.printers);
       setRoutes(printerData.routes.map((route) => ({ ...route, printerId: String(route.printerId) })));
       setShop(shopData.shop);
+      setDevices(deviceData.devices);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load printers."); }
     finally { setLoading(false); setRefreshing(false); }
   }
@@ -102,12 +108,30 @@ export function PrinterManagementPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not remove printer."); }
   }
 
+  async function createPairingCode() {
+    if (!desktopBridge) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const result = await json<{ pairingCode: string; expiresAt: string }>("/api/agent/pairing-code", { method: "POST", body: JSON.stringify({}) });
+      await desktopBridge.pair(result.pairingCode, agentApiUrl);
+      setNotice("This computer is connected. Its Windows printers will appear below.");
+      await load(true);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not create a pairing code."); }
+    finally { setSaving(false); }
+  }
+
+  async function revokeDevice(device: ConnectedDevice) {
+    if (!window.confirm(`Disconnect ${device.deviceName}? It will stop receiving jobs until paired again.`)) return;
+    try { await json<void>(`/api/agent/devices/${device.id}`, { method: "DELETE" }); setDevices((current) => current.filter((item) => item.id !== device.id)); setPrinters((current) => current.map((printer) => printer.agentDeviceId === device.id ? { ...printer, status: "offline" } : printer)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Could not disconnect this computer."); }
+  }
+
   if (loading) return <div className="workspace-loading"><LoaderCircle className="spin" size={24} /> Loading printer setup…</div>;
   return <div className="workspace-page"><header className="workspace-header"><a className="brand" href="/"><span className="brand-mark"><Printer size={20} /></span><span>printly.</span></a><a className="back-link" href="/dashboard/orders">Print jobs</a></header><main className="settings-main printer-management-main">
     <div className="printer-page-heading"><div><h1>Printers</h1><p>{availablePrinters.length} of {printers.length} printers available. Jobs are sent to the right printer automatically.</p></div><div className="printer-page-actions"><a className="printer-help-button printer-help-primary" href="https://www.youtube.com/watch?v=A9XypZ1avjI" target="_blank" rel="noreferrer"><CircleHelp size={14}/> How to connect printer</a><button type="button" className="order-refresh-button" disabled={refreshing} onClick={() => void load(true)}><RefreshCw className={refreshing ? "spin" : ""} size={14}/> {refreshing ? "Refreshing…" : "Refresh printers"}</button></div></div>
     {error && <div className="form-alert settings-alert" role="alert">{error}</div>}{notice && <div className="success-alert" role="status">{notice}</div>}
 
-    <section className="settings-card connected-pcs-card"><div className="printer-section-heading"><div><h2>Connected PCs</h2><p>Computers running the Printly desktop agent</p></div><button type="button" onClick={() => setGuideOpen(true)}><Download size={14}/> Download agent</button></div><div className="connected-pcs-empty"><span><Printer size={22}/></span><b>No PC connected yet</b><p>Install the Printly desktop app on the computer your printers are connected to, then sign in with your shop account. The agent will connect automatically once it is available.</p><button type="button" onClick={() => setGuideOpen(true)}>Agent setup status</button></div></section>
+    <section className="settings-card connected-pcs-card"><div className="printer-section-heading"><div><h2>Connected PCs</h2><p>Windows computers running Printly</p></div>{desktopBridge && <div className="printer-page-actions"><button type="button" onClick={() => void createPairingCode()} disabled={saving}><Plus size={14}/>{saving ? "Connecting…" : "Connect this computer"}</button></div>}</div>{devices.length ? devices.map((device) => <article className="merchant-order-card" key={device.id}><div className="merchant-order-heading"><b><Monitor size={14}/> {device.deviceName}</b><span className={`order-status-pill ${device.status === "online" ? "status-printed" : "status-awaiting_cash"}`}>{device.status === "online" ? "Online" : "Offline"}</span></div><div className="merchant-order-summary"><span>Printly Agent {device.agentVersion}</span><span>Last seen {device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : "Not yet connected"}</span></div><div className="merchant-order-actions"><button className="danger" type="button" onClick={() => void revokeDevice(device)}><Trash2 size={14}/> Disconnect</button></div></article>) : <div className="connected-pcs-empty"><span><Printer size={22}/></span><b>No PC connected yet</b><p>Open Printly on the Windows computer connected to your shop printers and choose “Connect this computer”.</p></div>}</section>
 
     <section className="settings-card printer-routing-card"><div className="printer-section-heading"><div><h2>Routing rules</h2><p>Which printer gets each kind of job — based on your Page setting</p></div><span className={`printer-route-count${missingRoutes ? " has-missing" : ""}`}>{missingRoutes} need a printer</span></div>
       {paperSizes.map((paperSize) => {
@@ -126,8 +150,8 @@ export function PrinterManagementPage() {
     </section>
 
     <section className="settings-card registered-printers-card" id="registered-printers"><div className="printer-section-heading"><div><h2>Printers added</h2><p>Printers discovered by the desktop agent and saved for this shop</p></div><span>{printers.length} total</span></div>
-      {printers.length ? printers.map((printer) => <article className="merchant-order-card" key={printer._id}><div className="merchant-order-heading"><b>{printer.name}</b><span className={`order-status-pill ${printer.status === "ready" ? "status-printed" : "status-awaiting_cash"}`}>{printer.protocol === "ipp" ? "Agent pending" : `Simulation ${printer.status}`}</span></div><div className="merchant-order-summary"><span>{printer.protocol === "ipp" ? printer.address : "Simulated printer · no physical output"}</span><span>{printer.paperSizes?.join(", ") ?? "A4"} · {printer.supportsColour ? "Colour" : "B&W"} · {printer.supportsDuplex ? "Duplex" : "Single-sided"}</span></div><div className="merchant-order-actions">{printer.protocol === "simulated" && <button type="button" onClick={() => void toggleSimulated(printer)}>Set {printer.status === "ready" ? "offline" : "ready"}</button>}<button type="button" className="danger" onClick={() => void removePrinter(printer)}><Trash2 size={14}/> Remove</button></div></article>) : <div className="printer-no-registered"><Printer size={23}/><b>No printers added</b><p>Add a simulated printer to test queue and routing behavior, or save your phone’s network IPP address for later.</p></div>}
+      {printers.length ? printers.map((printer) => <article className="merchant-order-card" key={printer._id}><div className="merchant-order-heading"><b>{printer.name}</b><span className={`order-status-pill ${printer.status === "ready" ? "status-printed" : "status-awaiting_cash"}`}>{printer.protocol === "windows" ? `Windows ${printer.status}` : printer.protocol === "ipp" ? "Agent pending" : `Simulation ${printer.status}`}</span></div><div className="merchant-order-summary"><span>{printer.protocol === "windows" ? `${printer.systemName ?? "Windows printer"} · ${devices.find((device) => device.id === printer.agentDeviceId)?.deviceName ?? "PC agent"}` : printer.protocol === "ipp" ? printer.address : "Simulated printer · no physical output"}</span><span>{printer.paperSizes?.join(", ") ?? "A4"} · {printer.supportsColour ? "Colour" : "B&W"} · {printer.supportsDuplex ? "Duplex" : "Single-sided"}</span></div><div className="merchant-order-actions">{printer.protocol === "simulated" && <button type="button" onClick={() => void toggleSimulated(printer)}>Set {printer.status === "ready" ? "offline" : "ready"}</button>}{printer.protocol !== "windows" && <button type="button" className="danger" onClick={() => void removePrinter(printer)}><Trash2 size={14}/> Remove</button>}</div></article>) : <div className="printer-no-registered"><Printer size={23}/><b>No printers added</b><p>Connect the Windows agent to discover physical printers. Simulated printers remain useful for testing queue and routing behavior.</p></div>}
       <form className="settings-fields two-col printer-add-form" onSubmit={(event) => void addPrinter(event)}><label>Printer name<input required minLength={2} maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="Counter printer"/></label><label>Connection<select value={protocol} onChange={(event) => setProtocol(event.target.value as "simulated" | "ipp")}><option value="simulated">Simulated</option><option value="ipp">IPP network printer</option></select></label><div className="field-full"><b>Supported paper sizes</b><div className="choice-row">{["A4", "A5", "Legal", "A3"].map((size) => <label className={`choice-chip${selectedSizes.includes(size) ? " selected" : ""}`} key={size}><input type="checkbox" checked={selectedSizes.includes(size)} onChange={() => setSelectedSizes((current) => current.includes(size) ? current.filter((value) => value !== size) : [...current, size])}/><span>{size}</span></label>)}</div></div><label className="toggle-row"><span><b>Colour capable</b></span><input type="checkbox" checked={supportsColour} onChange={(event) => setSupportsColour(event.target.checked)}/><i/></label><label className="toggle-row"><span><b>Duplex capable</b></span><input type="checkbox" checked={supportsDuplex} onChange={(event) => setSupportsDuplex(event.target.checked)}/><i/></label>{protocol === "ipp" && <label className="field-full">IPP address<input required value={address} onChange={(event) => setAddress(event.target.value)} placeholder="ipp://192.168.1.40:631/ipp/print"/><small>For the Android virtual printer, use the phone IP and its advertised IPP URL.</small></label>}<button className="button button-dark" type="submit" disabled={saving || selectedSizes.length === 0}><Plus size={15}/>{saving ? "Adding…" : "Add printer"}</button></form>
     </section>
-  </main>{guideOpen && <div className="shop-modal-backdrop" role="presentation" onClick={() => setGuideOpen(false)}><section className="shop-modal printer-guide-modal" role="dialog" aria-modal="true" aria-labelledby="printer-guide-title" onClick={(event) => event.stopPropagation()}><div className="settings-title-row"><div><h2 id="printer-guide-title">Connect a printer</h2><p>The Printly desktop agent is planned but is not included in this build yet. Until it is available, this page can save routing preferences and simulated printers, but cannot discover PCs or print physical jobs.</p></div><button className="shop-modal-close" type="button" aria-label="Close" onClick={() => setGuideOpen(false)}>×</button></div><ol><li>Install the Printly agent on the computer connected to your printer when the installer is released.</li><li>Sign in to the agent with your shop account so the computer and printers appear here.</li><li>Assign each supported paper, colour, and side option to a compatible printer.</li><li>Refresh this page to check connected computers and printer availability.</li></ol><div className="printer-guide-actions"><a className="button button-dark" href="https://www.youtube.com/watch?v=A9XypZ1avjI" target="_blank" rel="noreferrer">Watch printer setup</a><button className="qr-secondary-button" type="button" onClick={() => { setGuideOpen(false); document.getElementById("registered-printers")?.scrollIntoView({ behavior: "smooth" }); }}>Manage saved printers</button></div></section></div>}</div>;
+  </main></div>;
 }

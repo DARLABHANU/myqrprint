@@ -4,6 +4,7 @@ import session from "express-session";
 import helmet from "helmet";
 import MongoStore from "connect-mongo";
 import mongoose from "mongoose";
+import { agentRouter } from "./routes/agent.js";
 import { authRouter } from "./routes/auth.js";
 import { merchantOrdersRouter } from "./routes/merchantOrders.js";
 import { publicShopsRouter } from "./routes/publicShops.js";
@@ -61,7 +62,11 @@ app.use(
 app.use((request, response, next) => {
   if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
     const origin = request.get("origin");
-    if (!origin || !allowedOrigins.has(origin)) {
+    const isAgentEndpoint = request.path === "/api/agent/pair"
+      || request.path === "/api/agent/heartbeat"
+      || request.path === "/api/agent/jobs/next"
+      || /^\/api\/agent\/jobs\/[^/]+\/(files\/[^/]+|result)$/.test(request.path);
+    if (!isAgentEndpoint && (!origin || !allowedOrigins.has(origin))) {
       response.status(403).json({ error: "Request origin is not allowed." });
       return;
     }
@@ -72,8 +77,8 @@ app.use((request, response, next) => {
 app.use("/api/auth", authRouter);
 app.use("/api/shops", shopsRouter);
 app.use("/api/shops", printersRouter);
-app.use("/api/shops", printersRouter);
 app.use("/api/shops", merchantOrdersRouter);
+app.use("/api/agent", agentRouter);
 app.use("/api/public/shops", publicShopsRouter);
 app.use("/api", subscriptionsRouter);
 
