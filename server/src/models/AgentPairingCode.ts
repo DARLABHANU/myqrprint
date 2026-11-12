@@ -3,7 +3,7 @@ import { model, Schema } from "mongoose";
 const agentPairingCodeSchema = new Schema({
   shopId: { type: Schema.Types.ObjectId, ref: "Shop", required: true, index: true },
   codeHash: { type: String, required: true, unique: true, select: false },
-  expiresAt: { type: Date, required: true, index: true },
+  expiresAt: { type: Date, required: true },
   usedAt: { type: Date },
 }, { timestamps: true });
 
