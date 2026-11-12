@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./env.js";
 import mongoose from "mongoose";
 import { app } from "./app.js";
 import { cleanupExpiredUploads } from "./services/uploadCleanup.js";
@@ -12,7 +12,9 @@ if (!mongoUri) {
 }
 
 async function start() {
-  await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
+  console.log("[Printly Server] Connecting to database...");
+  await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 8000 });
+  console.log("[Printly Server] Connected to MongoDB.");
   await cleanupExpiredUploads();
   const cleanupTimer = setInterval(() => {
     void cleanupExpiredUploads().catch((error: unknown) => {
@@ -25,7 +27,7 @@ async function start() {
   }, 60 * 1000);
   summaryTimer.unref();
   app.listen(port, "0.0.0.0", () => {
-    console.log(`API listening on http://localhost:${port}`);
+    console.log(`[Printly Server] API listening on http://localhost:${port}`);
   });
 }
 

@@ -257,8 +257,8 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
       <main className="account-card">
         <a className="back-link" href="/"><ArrowLeft size={15} /> Back to home</a>
         <div className="eyebrow"><span className="eyebrow-dot" /> YOUR SHOP, SIMPLIFIED</div>
-        <h1>{isRegister ? "Set up your shop." : "Welcome back."}</h1>
-        <p className="account-intro">{isRegister ? "Create your owner account with an email and password. We’ll verify your email to finish setup." : "Sign in to your shop dashboard with your email and password."}</p>
+        <h1>{isRegister ? (otpStage ? "Enter verification OTP." : "Set up your shop.") : "Welcome back."}</h1>
+        <p className="account-intro">{isRegister ? (otpStage ? "Enter the 6-digit OTP sent to your email to complete registration and log in." : "Create your shop owner account. You will receive a 6-digit OTP to log in.") : "Sign in to your shop dashboard with your email and password."}</p>
         {accountNotice && <div className="success-alert" role="status">{accountNotice}</div>}
         <form className="account-form" onSubmit={submit}>
           {isRegister && !otpStage && <>
@@ -268,15 +268,15 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
           </>}
           <label>Email address<input autoComplete="email" type="email" required maxLength={254} readOnly={otpStage} value={values.email} onChange={(event) => setValues({ ...values, email: event.target.value })} /></label>
           {!otpStage && <label>Password<span className="password-input-wrap"><input autoComplete={isRegister ? "new-password" : "current-password"} required type={showPassword ? "text" : "password"} minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span>{isRegister && <small>Use at least 12 characters. You’ll use this to sign in.</small>}</label>}
-          {otpStage && <label>Six-digit code<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={otpCode} onChange={(event) => setOtpCode(event.target.value)} /><small>Enter the code from your email. It expires in 10 minutes.</small></label>}
+          {otpStage && <label>Six-digit OTP<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="123456" value={otpCode} onChange={(event) => setOtpCode(event.target.value)} /><small>Enter the 6-digit code sent to your email.</small></label>}
           {isRegister && !otpStage && <label className="terms-acceptance"><input type="checkbox" required checked={values.termsAccepted} onChange={(event) => setValues({ ...values, termsAccepted: event.target.checked })} /><span>I agree to the <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Notice</a>. These are draft policies for the local development preview.</span></label>}
           {error && <div className="form-alert" role="alert">{error}</div>}
           <button className="button button-dark account-submit" type="submit" disabled={busy}>
             {busy ? <LoaderCircle className="spin" size={16} /> : null}
-            {busy ? "Please wait…" : otpStage ? "Verify email and create account" : isRegister ? "Send verification code" : "Sign in"}
+            {busy ? "Please wait…" : otpStage ? "Verify OTP & Log In" : isRegister ? "Register" : "Sign in"}
             {!busy && <ChevronRight size={17} />}
           </button>
-          {isRegister && otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => void resendRegistrationCode()}>Resend verification code</button>}
+          {isRegister && otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => void resendRegistrationCode()}>Resend OTP</button>}
           {isRegister && otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => { setOtpStage(false); setAccountNotice(""); setError(""); }}>Change registration details</button>}
         </form>
         <p className="account-switch">{isRegister ? "Already have an account?" : "New to Printly?"} <a href={isRegister ? "/login" : "/register"}>{isRegister ? "Sign in" : "Create an account"}</a></p>

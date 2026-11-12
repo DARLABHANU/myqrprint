@@ -6,6 +6,7 @@ const userSchema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: false, select: false },
     termsAcceptedAt: { type: Date, required: true },
+    role: { type: String, enum: ["owner", "admin"], default: "owner" },
     emailVerifiedAt: { type: Date },
     emailVerificationTokenHash: { type: String, select: false },
     emailVerificationExpiresAt: { type: Date, select: false },

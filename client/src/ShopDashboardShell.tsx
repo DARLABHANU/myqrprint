@@ -204,7 +204,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
         <p>{group.label}</p>
         {group.links.map(({ title, href, icon: Icon }) => <a className={`shop-sidebar-link${pathIsActive(path, href) ? " active" : ""}`} href={href} key={title} aria-current={pathIsActive(path, href) ? "page" : undefined} onClick={() => setMobileNavOpen(false)}><Icon size={17} /><span>{title}</span></a>)}
       </nav>)}
-      <a className="shop-plan-summary" href="/dashboard/subscription"><b>Subscriptions</b><span>Coming soon</span><small>No billing or order limits are active.</small></a>
+      <a className="shop-plan-summary" href="/dashboard/subscription"><b>My Subscription</b><span>View plans & quota</span><small>Manage your shop order capacity.</small></a>
       <small className="shop-sidebar-version">PRINTLY · SHOP WORKSPACE</small>
     </aside>
     {mobileNavOpen && <button className="shop-sidebar-backdrop" type="button" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />}
@@ -217,7 +217,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
           <button className={`shop-online-switch${shop?.isOnline ? " is-online" : ""}`} type="button" role="switch" aria-checked={Boolean(shop?.isOnline)} disabled={!shop || busy} onClick={() => void toggleOnline()}><i />{shop?.isOnline ? "Shop online" : "Shop offline"}</button>
           <div className="shop-account-menu-wrap">
             <button className="shop-account-menu-button" type="button" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((current) => !current)}><span>{(account?.ownerName ?? "P").slice(0, 1).toUpperCase()}</span><b>{account?.ownerName ?? "Account"}<small>{shop?.displayName ?? account?.email ?? ""}</small></b><ChevronDown size={14} /></button>
-            {accountMenuOpen && <div className="shop-account-popover"><a href="/dashboard/settings/profile" onClick={() => setAccountMenuOpen(false)}>My profile</a><a href="/dashboard/settings/security" onClick={() => setAccountMenuOpen(false)}>Account & security</a><button type="button" disabled={busy} onClick={() => void signOut()}><LogOut size={14} /> Sign out</button></div>}
+            {accountMenuOpen && <div className="shop-account-popover"><a href="/dashboard/settings/profile" onClick={() => setAccountMenuOpen(false)}>My profile</a><a href="/dashboard/settings/security" onClick={() => setAccountMenuOpen(false)}>Account & security</a><a href="/dashboard/subscription" onClick={() => setAccountMenuOpen(false)}>My subscription</a>{account?.email?.toLowerCase() === "daarlabhanumurthy@gmail.com" && <a href="/admin/subscriptions" onClick={() => setAccountMenuOpen(false)} style={{ color: "#078c68", fontWeight: 700 }}>Admin subscriptions</a>}<button type="button" disabled={busy} onClick={() => void signOut()}><LogOut size={14} /> Sign out</button></div>}
           </div>
         </div>
       </header>

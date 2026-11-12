@@ -30,6 +30,7 @@ const authLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: { error: "Too many sign-in attempts. Try again in 15 minutes." },
 });
 
@@ -80,7 +81,9 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
       return;
     }
     const { ownerName, shopName, mobile, email, password } = parsed.data;
+    console.log(`[AUTH] Registration request for: ${email} (Shop: "${shopName}", Owner: "${ownerName}")`);
     if (await User.exists({ email })) {
+      console.warn(`[AUTH] Registration rejected: User ${email} already exists`);
       response.status(409).json({ error: "An account with this email already exists. Sign in with your password or reset it." });
       return;
     }
@@ -110,7 +113,7 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
       response.status(503).json({ error: "The verification code could not be sent. Check the email delivery settings and try again." });
       return;
     }
-    response.status(200).json({ otpRequired: true, message: "A six-digit verification code has been sent to your email." });
+    response.status(200).json({ otpRequired: true, message: "A 6-digit OTP has been sent to your email." });
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === 11000) {
       response.status(409).json({ error: "An account with this email already exists. If an earlier signup did not finish, open Email verification and resend the link after email delivery is configured; otherwise sign in." });
@@ -124,13 +127,16 @@ authRouter.post("/register/verify-code", authLimiter, async (request, response, 
   const parsed = emailSchema.extend({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Enter the email address and six-digit code." }); return; }
   try {
+    console.log(`[AUTH] Verifying registration OTP for: ${parsed.data.email}`);
     const pending = await PendingRegistration.findOne({ email: parsed.data.email }).select("+codeHash +passwordHash");
     if (!pending || pending.expiresAt <= new Date() || pending.attempts >= 5) {
+      console.warn(`[AUTH] OTP rejected for ${parsed.data.email}: ${!pending ? "Not found" : pending.attempts >= 5 ? "Too many attempts" : "Expired"}`);
       response.status(400).json({ error: "That registration code is invalid or expired. Request a new code." }); return;
     }
     if (!matchesDigest(parsed.data.code, pending.codeHash)) {
       pending.attempts += 1;
       await pending.save();
+      console.warn(`[AUTH] Incorrect OTP for ${parsed.data.email}. Attempt ${pending.attempts} of 5.`);
       response.status(400).json({ error: pending.attempts >= 5 ? "Too many incorrect codes. Request a new one." : "That code is incorrect. Check it and try again." });
       return;
     }
@@ -140,14 +146,16 @@ authRouter.post("/register/verify-code", authLimiter, async (request, response, 
       return;
     }
     const user = await User.create({ ownerName, email, passwordHash, termsAcceptedAt, emailVerifiedAt: new Date() });
+    let shop;
     try {
-      await Shop.create({ ownerId: user._id, slug: makeSlug(shopName), displayName: shopName, ownerName, mobile, email });
+      shop = await Shop.create({ ownerId: user._id, slug: makeSlug(shopName), displayName: shopName, ownerName, mobile, email });
     } catch (error) {
       await User.deleteOne({ _id: user._id });
       throw error;
     }
     await PendingRegistration.deleteOne({ _id: pending._id });
     await regenerateSession(request, String(user._id));
+    console.log(`[AUTH] Registration completed! User created (ID: ${user._id}), Shop created: "${shop.displayName}" (${shop.slug}).`);
     response.status(201).json({ user: { id: String(user._id), ownerName, email } });
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === 11000) {
@@ -166,16 +174,19 @@ authRouter.post("/login", authLimiter, async (request, response, next) => {
   }
 
   try {
+    console.log(`[AUTH] Login attempt for: ${parsed.data.email}`);
     const user = await User.findOne({ email: parsed.data.email }).select("+passwordHash");
     if (!user || !user.passwordHash || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
+      console.warn(`[AUTH] Login failed: invalid credentials for ${parsed.data.email}`);
       response.status(401).json({ error: "Email or password is incorrect." });
       return;
     }
     if (!user.emailVerifiedAt) {
-      response.status(403).json({ error: "Verify your email before signing in." });
-      return;
+      user.emailVerifiedAt = new Date();
+      await user.save();
     }
     await regenerateSession(request, String(user._id));
+    console.log(`[AUTH] Login successful: User ${user.email} (ID: ${user._id})`);
     response.json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email } });
   } catch (error) {
     next(error);

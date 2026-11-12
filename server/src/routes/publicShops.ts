@@ -50,12 +50,14 @@ const uploadLimiter = rateLimit({
   limit: 12,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  validate: { trustProxy: false },
 });
 const orderLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  validate: { trustProxy: false },
 });
 
 const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i);
@@ -467,6 +469,23 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       response.status(404).json({ error: "This shop is currently unavailable." });
       return;
     }
+    const nowCheck = new Date();
+    if (shop.subscriptionExpiresAt && new Date(shop.subscriptionExpiresAt).getTime() < nowCheck.getTime()) {
+      response.status(403).json({
+        error: "This print shop is currently not accepting new orders (subscription expired). Please notify the shopkeeper.",
+      });
+      return;
+    }
+    if (
+      typeof shop.subscriptionOrderLimit === "number" &&
+      shop.subscriptionOrderLimit > 0 &&
+      (shop.subscriptionOrdersUsed ?? 0) >= shop.subscriptionOrderLimit
+    ) {
+      response.status(403).json({
+        error: "This print shop has reached its maximum order capacity for the current billing cycle. Please notify the shopkeeper.",
+      });
+      return;
+    }
     orderShopId = shop._id;
     if (parsed.data.customerName && !shop.collectCustomerName) {
       response.status(400).json({ error: "This shop does not collect customer names." });
@@ -567,6 +586,8 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       response.status(409).json({ error: "An upload was already used. Please refresh and check your order." });
       return;
     }
+
+    await Shop.updateOne({ _id: shop._id }, { $inc: { subscriptionOrdersUsed: 1 } });
 
     response.status(201).json({
       order: {

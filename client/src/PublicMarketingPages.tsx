@@ -93,9 +93,9 @@ const faqGroups = [
   {
     name: "Pricing & plans",
     questions: [
-      ["What shop subscriptions are available?", "Subscriptions are a placeholder and are not available yet. There is no checkout, subscription payment, expiry, or order quota enforcement."],
-      ["Can customers still place shop orders?", "Customer orders are not limited by subscription status. Shops can accept direct UPI or cash orders while printer automation is paused."],
-      ["Can Printly send orders to a printer?", "Printer setup, the desktop print agent, automatic routing, and print execution are temporarily paused. Shops can review orders and manage manual fulfillment."],
+      ["What shop subscriptions are available?", "Printly offers a 7-day Free Trial (up to 50 orders), Starter (₹199/mo, 300 orders), Professional (₹499/mo, 1,500 orders), and Enterprise (₹999/mo, unlimited orders)."],
+      ["How do I pay for my shop subscription?", "You can pay via any UPI app (GPay, PhonePe, Paytm, BHIM) by scanning our platform UPI QR code, then submit the 12-digit UTR in your shop dashboard for quick verification."],
+      ["Does Printly take a cut of customer print orders?", "No. Customers pay your shop directly by UPI or cash at your counter. Printly takes 0% commission on your print jobs."],
     ],
   },
 ] as const;
@@ -325,12 +325,13 @@ const pageContent: Record<string, MarketingPage> = {
     ],
   },
   "/pricing": {
-    title: "Shop subscriptions are coming soon",
-    intro: "Subscription plans and billing are not currently available. No plan payment is collected and no plan limit blocks customer orders.",
+    title: "Simple, transparent plans for local print shops",
+    intro: "Start with a 7-day free trial. Pick a plan that fits your shop's walk-in order volume.",
     category: "features",
     sections: [
-      { title: "No subscription checkout", body: "Subscription setup is a placeholder for a future release. Do not send subscription payments or transaction references through Printly." },
-      { title: "Customer order payments are separate", body: "When a shop enables them, customers pay that shop directly by UPI or cash at the counter. Printly does not process or hold these funds." },
+      { title: "Free 7-day evaluation", body: "Every new shop begins with a 7-day free trial with up to 50 customer orders. No credit card required." },
+      { title: "Direct UPI & cash payments", body: "Customers pay your shop directly via your own UPI ID or counter cash. Printly takes 0% commission on your customer orders." },
+      { title: "Upgrade anytime", body: "Move to Starter, Professional, or Enterprise as your order volume grows, with simple UPI-based subscription activation." },
     ],
   },
   "/faq": {
@@ -573,7 +574,7 @@ export function PublicMarketingPages({ path }: { path: string }) {
 
             <section className="public-page-hero">
               <div className="public-page-hero-copy">
-                <div className="public-eyebrow"><span />{isCityIndex || isCityPage ? "LOCAL PRINT ORDERING" : isSolutions ? "BUILT FOR YOUR COUNTER" : isPricing ? "SUBSCRIPTIONS COMING SOON" : isFaq ? "HELP & ANSWERS" : "THE PRINTLY PLATFORM"}</div>
+                <div className="public-eyebrow"><span />{isCityIndex || isCityPage ? "LOCAL PRINT ORDERING" : isSolutions ? "BUILT FOR YOUR COUNTER" : isPricing ? "TRANSPARENT PLANS" : isFaq ? "HELP & ANSWERS" : "THE PRINTLY PLATFORM"}</div>
                 <h1>{page.title}</h1>
                 <p>{page.intro}</p>
                 <div className="public-hero-actions">
@@ -590,13 +591,74 @@ export function PublicMarketingPages({ path }: { path: string }) {
             </section>
 
             {isPricing ? (
-              <section className="public-pricing-content">
-                <div className="public-section-intro">
-                  <div className="public-eyebrow"><span /> NOT AVAILABLE YET</div>
-                  <h2>Subscriptions are<br /><span>coming soon.</span></h2>
-                  <p>This page is informational only. No subscription checkout, payment collection, expiry, or customer-order quota is active.</p>
+              <section className="public-pricing-content" style={{ display: "grid", gridTemplateColumns: "1fr", gap: 36, padding: "50px max(8%, calc((100% - 1070px) / 2))" }}>
+                <div className="public-section-intro" style={{ maxWidth: 650, margin: "0 auto", textAlign: "center" }}>
+                  <div className="public-eyebrow" style={{ justifyContent: "center" }}><span /> PLANS FOR EVERY PRINT SHOP</div>
+                  <h2>Zero commission.<br /><span>Simple monthly pricing.</span></h2>
+                  <p>Customer payments go straight to your shop. Pick a plan based on your monthly order volume.</p>
                 </div>
-                <p className="public-plan-card">Customer orders can continue without an active subscription. Direct UPI and cash payments, when enabled by the shop, go to the shopkeeper.</p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 20 }}>
+                  <article className="public-pricing-card" style={{ display: "flex", flexDirection: "column" }}>
+                    <div className="public-plan-top">
+                      <span>FOR LOCAL XEROX SHOPS</span>
+                      <span className="public-plan-badge">STARTER</span>
+                    </div>
+                    <h3>Starter</h3>
+                    <p>Essential digital tools for neighborhood photocopy shops.</p>
+                    <div style={{ margin: "14px 0", fontSize: 28, fontWeight: 800, color: "#078c68", fontFamily: "Manrope, sans-serif" }}>
+                      ₹199 <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ month</small>
+                    </div>
+                    <ul style={{ flex: 1 }}>
+                      <li><Check size={15} /> <b>Up to 300 orders</b> / month</li>
+                      <li><Check size={15} /> All paper sizes (A4, A3, A5, Legal)</li>
+                      <li><Check size={15} /> Direct UPI & cash payments</li>
+                      <li><Check size={15} /> Daily email business summary</li>
+                      <li><Check size={15} /> Standard email support</li>
+                    </ul>
+                    <a className="button button-dark" href="/register" style={{ marginTop: 20 }}>Get started free</a>
+                  </article>
+
+                  <article className="public-pricing-card" style={{ display: "flex", flexDirection: "column", border: "2px solid #0aa579", position: "relative" }}>
+                    <div className="public-plan-top">
+                      <span style={{ color: "#0aa579" }}>POPULAR CHOICE</span>
+                      <span className="public-plan-badge" style={{ background: "#dcfce7", color: "#15803d" }}>MOST POPULAR</span>
+                    </div>
+                    <h3>Professional</h3>
+                    <p>Built for busy cyber cafes and commercial document centers.</p>
+                    <div style={{ margin: "14px 0", fontSize: 28, fontWeight: 800, color: "#078c68", fontFamily: "Manrope, sans-serif" }}>
+                      ₹499 <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ month</small>
+                    </div>
+                    <ul style={{ flex: 1 }}>
+                      <li><Check size={15} /> <b>Up to 1,500 orders</b> / month</li>
+                      <li><Check size={15} /> Custom shop logo on QR poster</li>
+                      <li><Check size={15} /> Location-lock proximity protection</li>
+                      <li><Check size={15} /> Advanced analytics & CSV export</li>
+                      <li><Check size={15} /> WhatsApp & priority email support</li>
+                    </ul>
+                    <a className="button button-dark" href="/register" style={{ marginTop: 20, background: "#0aa579" }}>Start 7-day trial</a>
+                  </article>
+
+                  <article className="public-pricing-card" style={{ display: "flex", flexDirection: "column" }}>
+                    <div className="public-plan-top">
+                      <span>CAMPUS & LARGE HUBS</span>
+                      <span className="public-plan-badge">ENTERPRISE</span>
+                    </div>
+                    <h3>Enterprise</h3>
+                    <p>For high-volume college libraries and multi-counter copy hubs.</p>
+                    <div style={{ margin: "14px 0", fontSize: 28, fontWeight: 800, color: "#078c68", fontFamily: "Manrope, sans-serif" }}>
+                      ₹999 <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ month</small>
+                    </div>
+                    <ul style={{ flex: 1 }}>
+                      <li><Check size={15} /> <b>Unlimited customer orders</b></li>
+                      <li><Check size={15} /> Everything in Professional</li>
+                      <li><Check size={15} /> Zero order quota interruption</li>
+                      <li><Check size={15} /> Photo layouts & passport photo sheets</li>
+                      <li><Check size={15} /> Dedicated account manager</li>
+                    </ul>
+                    <a className="button button-dark" href="/register" style={{ marginTop: 20 }}>Get started free</a>
+                  </article>
+                </div>
               </section>
             ) : null}
 

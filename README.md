@@ -7,8 +7,8 @@ A multi-shop print-order web app built with React, Vite, Express, TypeScript, an
 The current scope includes public shop pages, customer file uploads and quotes,
 direct-to-shop UPI or cash orders, merchant order management, and shop settings.
 Automated printing and printer setup are temporarily paused. Shop subscriptions
-are placeholders: there is no subscription checkout, payment collection, expiry
-enforcement, or order quota. Customer payments remain direct to each shop and
+include a 7-day trial and tiers (Starter, Pro, Enterprise) activated via direct
+platform UPI and admin UTR verification. Customer payments remain direct to each shop and
 must be verified by the shopkeeper. The detailed requirements draft is
 [`final_draft.md`](./final_draft.md).
 
@@ -72,12 +72,14 @@ period. Customers can check order status with their session and pickup code.
 Shopkeepers can configure their profile, QR poster, pricing, discounts,
 customer fields, location lock, notifications, and payment methods.
 
-The printer dashboard is an informational placeholder. Printer setup, printer
-routing, Windows-agent pairing, job polling, and print execution endpoints
-return a service-paused response. The subscription and public pricing pages are
-placeholders, and subscription payment/admin APIs are not mounted. Legacy plan
-fields may remain in stored shop documents for compatibility but do not gate
-shop visibility or order creation. No Razorpay checkout, wallet, payout, or
+The printer dashboard and desktop print agent are active: shopkeepers can generate
+a 6-digit pairing code to connect their Windows PC running the Printly agent, which
+automatically discovers local printers (including virtual printers like "Microsoft Print to PDF")
+and executes approved print jobs. Shop subscriptions are active: each shop starts
+with a 7-day free trial (50 orders), and can upgrade to Starter (300 orders),
+Professional (1,500 orders), or Enterprise (unlimited) via direct platform UPI
+payment and UTR verification in `/admin/subscriptions`. Customer orders enforce
+subscription validity and quotas. No Razorpay checkout, wallet, payout, or
 withdrawal flow is provided.
 
 This is still a development build: email delivery must be configured, platform

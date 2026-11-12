@@ -19,6 +19,9 @@ function senderAddress(): string {
 }
 
 export function isMailConfigured(): boolean {
+  if (process.env.NODE_ENV !== "production") {
+    return true;
+  }
   return gmailApiConfigured() || Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
 }
 
@@ -119,18 +122,28 @@ export async function sendAccountEmail(to: string, subject: string, text: string
     await sendWithGmailApi(to, subject, text);
     return;
   }
-  if (!process.env.SMTP_HOST || !process.env.SMTP_FROM) {
-    throw new Error("Configure Gmail OAuth or SMTP to send account emails.");
+  if (process.env.SMTP_HOST && process.env.SMTP_FROM) {
+    const port = Number(process.env.SMTP_PORT ?? 587);
+    const transport = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: process.env.SMTP_SECURE === "true",
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
+      auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD ?? "" } : undefined,
+    });
+    await transport.sendMail({ from: process.env.SMTP_FROM, to, subject, text });
+    return;
   }
-  const port = Number(process.env.SMTP_PORT ?? 587);
-  const transport = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    secure: process.env.SMTP_SECURE === "true",
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 20_000,
-    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD ?? "" } : undefined,
-  });
-  await transport.sendMail({ from: process.env.SMTP_FROM, to, subject, text });
+  if (process.env.NODE_ENV !== "production") {
+    console.log("\n========================================================");
+    console.log(`[DEV EMAIL OTP]`);
+    console.log(`To: ${to}`);
+    console.log(`Subject: ${subject}`);
+    console.log(`Body:\n${text}`);
+    console.log("========================================================\n");
+    return;
+  }
+  throw new Error("Configure Gmail OAuth or SMTP to send account emails.");
 }

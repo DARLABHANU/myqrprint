@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowRight,
@@ -64,6 +64,9 @@ const benefits = [
 
 export default function App() {
   const path = window.location.pathname.replace(/\/$/, "") || "/";
+  useEffect(() => {
+    console.log(`%c[PAGE NAV] Opened: ${path}`, "color: #9333ea; font-weight: 600;");
+  }, [path]);
   const customerPage = /^\/p\/([^/]+)\/?$/.exec(path);
   if (customerPage) {
     let slug = customerPage[1];
@@ -76,7 +79,7 @@ export default function App() {
   }
   if (path === "/register") return <AccountPage mode="register" />;
   if (path === "/login") return <AccountPage mode="login" />;
-  if (path === "/verify-email") return <AuthFlowPage flow="verify" />;
+  if (path === "/verify-email") return <AccountPage mode="login" />;
   if (path === "/forgot-password") return <AuthFlowPage flow="forgot" />;
   if (path === "/reset-password") return <AuthFlowPage flow="reset" />;
   if (path === "/dashboard/settings") return shopPage(<ShopSettingsPage />);

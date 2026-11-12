@@ -16,11 +16,12 @@ This document describes the current development scope. In particular:
 
 1. Customer shop pages, uploads, quoting, orders, direct-to-shop payments, and
    merchant order management remain in scope.
-2. Printer setup, printer pairing, printer routing, print-agent communication,
-   and automatic print execution are temporarily paused.
-3. Shop subscription features are placeholders. Subscription checkout and
-   payment collection are disabled, and legacy plan dates/order counts do not
-   restrict a shop or its customer orders.
+2. Printer setup, Windows agent pairing, routing to local/virtual printers
+   (including Microsoft Print to PDF), and automatic print execution are active.
+3. Shop subscription plans and billing are active. Shops start with a 7-day
+   trial and can upgrade to Starter, Professional, or Enterprise via direct UPI
+   payment and UTR verification in /admin/subscriptions. Customer orders enforce
+   active subscription validity and monthly order quotas.
 4. Customer print payments are not platform payments. UPI and cash payments
    go directly to the individual shop and require the shopkeeper's manual
    verification.
@@ -53,11 +54,11 @@ accounts. A shopkeeper account is password-based and owns one shop record.
 | Customer order creation/status | Available | Uses direct UPI or cash, a pickup code, and the customer's session |
 | Merchant order/payment management | Available | Shopkeeper confirms payment and updates fulfillment status |
 | Reports and payment records | Available | Reads recorded orders and manually confirmed direct payments |
-| Printer-management page | Placeholder | Explains that printer operations are paused |
-| Printer setup/routing API | Paused | Returns HTTP 503 for printer-management operations |
-| Print-agent API | Paused | Returns HTTP 503; paired clients cannot poll or submit print jobs |
-| Subscription page/pricing | Placeholder | States that subscriptions are not available yet |
-| Subscription payment/admin APIs | Disabled | Not mounted by the application |
+| Printer-management page | Available | Device status, 6-digit pairing code, routing matrix, virtual printer add |
+| Printer setup/routing API | Available | Printer routes, status updates, and custom printer registration |
+| Print-agent API | Available | Pairing, heartbeat, device management, job leasing, and result reporting |
+| Subscription page & pricing | Available | Plan tiers, order quotas, UPI checkout with UTR submission |
+| Subscription payment & admin APIs | Available | Mounted at /api/shops/subscription and /api/admin/subscriptions |
 | Razorpay / platform wallet | Out of scope | No checkout, collection, wallet, payout, or withdrawal operation |
 
 “Manual fulfillment” means the shopkeeper handles fulfillment outside Printly
@@ -461,18 +462,13 @@ unnecessary database migration.
 - **FR-PRINT-05:** Customer orders and manual merchant workflows remain
   functional when printer APIs return 503.
 
-### 7.11 Subscription placeholder requirements
+### 7.11 Subscription plans and billing requirements
 
-- **FR-SUB-01:** The merchant subscription screen clearly says plans and
-  billing are unavailable.
-- **FR-SUB-02:** The public pricing page is informational and contains no
-  purchasable plan checkout or payment request.
-- **FR-SUB-03:** Subscription payment/admin API routes are not mounted.
-- **FR-SUB-04:** No code path increments a subscription order counter or uses
-  legacy plan expiry/order-limit fields to restrict customer shops, uploads,
-  quotes, or orders.
-- **FR-SUB-05:** Existing legacy plan fields are retained for data
-  compatibility until a separately reviewed migration is approved.
+- **FR-SUB-01:** Every new shop receives an automatic 7-day free trial (50 customer orders limit).
+- **FR-SUB-02:** The merchant subscription screen (/dashboard/subscription) displays current plan status, validity countdown, order quota progress bar, and available subscription tiers (Starter, Professional, Enterprise).
+- **FR-SUB-03:** Upgrading or renewing a plan displays the platform UPI QR code and payment amount. The shopkeeper submits their 12-digit UPI Reference / UTR for verification.
+- **FR-SUB-04:** The admin subscription review route (/admin/subscriptions) allows platform administrators to review pending UTR payments, approve/reject requests, and manually override any shop's plan and expiry.
+- **FR-SUB-05:** Upon approval, the shop's plan is updated, validity extended, order limit set, and orders used counter reset. Customer order creation enforces active subscription validity and order limits.
 
 ## 8. Data requirements
 

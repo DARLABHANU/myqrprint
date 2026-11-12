@@ -16,7 +16,13 @@ let tray: Tray | null = null;
 let isQuitting = false;
 const pendingPrints = new Map<string, { window: BrowserWindow; printerName: string; options: ReturnType<typeof leasedPrintJobSchema.parse>['options']; resolve: () => void; reject: (error: Error) => void }>();
 const productionWebUrl = 'https://myqrprint.vercel.app';
-const allowedWebOrigins = new Set([new URL(productionWebUrl).origin, 'http://localhost:5173', 'http://127.0.0.1:5173']);
+function isAllowedOrigin(origin: string): boolean {
+  if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin)) return true;
+  try {
+    const host = new URL(origin).hostname;
+    return host === 'myqrprint.vercel.app' || host.endsWith('.vercel.app');
+  } catch { return false; }
+}
 
 async function loadConnection() {
   try {
@@ -103,7 +109,7 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     let origin = '';
     try { origin = new URL(url).origin; } catch { /* blocked below */ }
-    if (allowedWebOrigins.has(origin)) return;
+    if (isAllowedOrigin(origin)) return;
     event.preventDefault();
     if (url.startsWith('https://')) void shell.openExternal(url);
   });
@@ -134,12 +140,12 @@ ipcMain.handle('agent:status', async () => ({ connected: Boolean(connection), de
 ipcMain.handle('agent:pair', async (event, input: { code: string; apiUrl: string }) => {
   let senderOrigin = '';
   try { senderOrigin = new URL(event.sender.getURL()).origin; } catch { /* reject below */ }
-  if (!allowedWebOrigins.has(senderOrigin)) throw new Error('Pairing can only be started from Printly.');
+  if (!isAllowedOrigin(senderOrigin)) throw new Error('Pairing can only be started from Printly.');
   const apiUrl = input.apiUrl.trim().replace(/\/+$/, '');
   let parsedApiUrl: URL;
   try { parsedApiUrl = new URL(apiUrl); } catch { throw new Error('Enter the Printly backend URL (https://…).'); }
   if (parsedApiUrl.protocol !== 'https:' && !(parsedApiUrl.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsedApiUrl.hostname))) throw new Error('Use a secure HTTPS Printly server URL.');
-  if (parsedApiUrl.protocol === 'https:' && parsedApiUrl.hostname !== 'printly-api.onrender.com') throw new Error('Use the official Printly server address.');
+  if (parsedApiUrl.protocol === 'https:' && !parsedApiUrl.hostname.endsWith('onrender.com') && parsedApiUrl.hostname !== 'printly-api.onrender.com') throw new Error('Use the official Printly server address.');
   const response = await fetch(new URL('/api/agent/pair', apiUrl), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pairingCode: input.code, deviceName: hostname(), agentVersion: VERSION }) });
   const body = await response.json(); if (!response.ok) throw new Error(body.error ?? 'Could not pair this computer.');
   const paired = pairAgentResponseSchema.parse(body);

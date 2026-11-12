@@ -6,16 +6,7 @@ import { Shop } from "../models/Shop.js";
 import { ShopPrinter } from "../models/ShopPrinter.js";
 
 export const printersRouter = Router();
-printersRouter.use((request, response, next) => {
-  const isPrinterRoute = request.path === "/printers"
-    || request.path === "/printer-routes"
-    || /^\/printers\/[^/]+(?:\/status)?$/.test(request.path);
-  if (!isPrinterRoute) {
-    next();
-    return;
-  }
-  response.status(503).json({ error: "Printer setup is temporarily paused. You can still review and fulfill orders manually." });
-});
+
 const sizes = ["A3", "A4", "A5", "Legal"] as const;
 const printerSchema = z.object({
   name: z.string().trim().min(2).max(80),
