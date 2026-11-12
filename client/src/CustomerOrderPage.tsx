@@ -36,10 +36,12 @@ type Rate = {
 type PublicShop = {
   slug: string;
   displayName: string;
+  logoDataUrl?: string;
   address: string;
   collectCustomerName: boolean;
   collectCustomerMobile: boolean;
   fileRetentionHours: number;
+  customerUploadVoice?: boolean;
   locationLockEnabled: boolean;
   locationRadiusMeters: number;
   upiId: string;
@@ -340,6 +342,12 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
       if (!response.ok) throw new Error(await getApiError(response));
       const body = await response.json() as { order: OrderConfirmation };
       setOrder(body.order);
+      if (shop.customerUploadVoice && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        const announcement = new SpeechSynthesisUtterance("Your order has been placed successfully.");
+        announcement.lang = "en-IN";
+        window.speechSynthesis.speak(announcement);
+      }
       setQuote(null);
     } catch (reason) {
       setError(reason instanceof Error && reason.name === "AbortError"
@@ -426,7 +434,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
           <div className="confirmation-check"><Check size={26} /></div>
           <div className="customer-eyebrow">ORDER RECEIVED</div>
           <h1>Your print order is in.</h1>
-          <p className="confirmation-copy">Show this pickup code at the counter. The shop will confirm payment before printing.</p>
+          <p className="confirmation-copy">Show this pickup code at the counter. The shop will confirm payment and update your order after manual fulfillment.</p>
+          <p className="customer-retention-note" role="note">Printer automation is temporarily paused. Your shop may fulfill orders manually; contact the shop if you need to confirm availability.</p>
           <div className="pickup-code"><small>PICKUP CODE</small><b>{order.code}</b><span>{customerOrderStatus(order.status, order.paymentStatus)}</span></div>
           {statusError && <p className="customer-status-error" role="status">{statusError} We’ll keep trying to refresh.</p>}
           <div className="confirmation-total"><span>Order total</span><b>{money(order.amountPaise)}</b></div>
@@ -445,8 +454,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
             <button className="customer-secondary-button" type="button" disabled={claiming || Boolean(claimMessage)} onClick={() => void reportPayment()}>{claiming ? "Sending…" : "I've paid — tell the shop"}</button>
             <p className="verification-note"><ShieldCheck size={14} /> Your payment stays unverified until the shop confirms it.</p>
           </div>}
-          {order.paymentMethod === "cash" && <div className="cash-instructions"><h2>{order.paymentStatus === "paid" ? "Cash confirmed" : "Pay at the counter"}</h2><p>{order.paymentStatus === "paid" ? "The shop has confirmed your cash payment. Your order status will update here as it is printed." : `Show your pickup code and pay ${money(order.amountPaise)} at the shop. The shopkeeper will confirm cash before printing.`}</p></div>}
-          {order.paymentMethod === "upi" && order.paymentStatus === "paid" && <div className="cash-instructions"><h2>Payment confirmed</h2><p>The shop has verified your UPI payment. Your order status will update here as it is printed.</p></div>}
+          {order.paymentMethod === "cash" && <div className="cash-instructions"><h2>{order.paymentStatus === "paid" ? "Cash confirmed" : "Pay at the counter"}</h2><p>{order.paymentStatus === "paid" ? "The shop has confirmed your cash payment. Your order status will update after manual fulfillment." : `Show your pickup code and pay ${money(order.amountPaise)} at the shop. The shopkeeper will confirm cash before fulfillment.`}</p></div>}
+          {order.paymentMethod === "upi" && order.paymentStatus === "paid" && <div className="cash-instructions"><h2>Payment confirmed</h2><p>The shop has verified your UPI payment. Your order status will update after manual fulfillment.</p></div>}
           <a className="back-link customer-back" href={`/p/${encodeURIComponent(slug)}`}><ArrowLeft size={15} /> Back to shop</a>
         </main>
       </div>
@@ -457,7 +466,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
     <div className="customer-page">
       <CustomerHeader />
       <main className="customer-order-layout">
-        <div className="customer-shop-banner"><span><Store size={20} /></span><b>{shop.displayName}</b></div>
+        <div className="customer-shop-banner"><span>{shop.logoDataUrl ? <img src={shop.logoDataUrl} alt=""/> : <Store size={20} />}</span><b>{shop.displayName}</b></div>
+        <p className="customer-retention-note" role="note">Printer automation is temporarily paused. The shop can still review orders and handle fulfillment manually; contact the shop if you need to confirm availability.</p>
 
         <section className="customer-order-card">
           <SectionHeading number={1} title="Upload files" hint="max 10" />
@@ -542,20 +552,20 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
         {quote?.discountPaise ? <p className="customer-discount-note">Bulk discount ({quote.discountPercent}%): −{money(quote.discountPaise)}</p> : null}
         {quoteError && <div className="customer-alert" role="alert">{quoteError}</div>}
         {error && <div className="customer-alert" role="alert">{error}</div>}
-        <p className="customer-retention-note"><ShieldCheck size={14} /> Files are used only for printing and deleted according to the shop’s {shop.fileRetentionHours}-hour retention setting.</p>
+        <p className="customer-retention-note"><ShieldCheck size={14} /> Files are used only for printing and unprinted uploads are deleted after {shop.fileRetentionHours < 1 ? `${Math.round(shop.fileRetentionHours * 60)} minutes` : `${shop.fileRetentionHours} ${shop.fileRetentionHours === 1 ? "hour" : "hours"}`}.</p>
       </main>
       <footer className="customer-footer"><span>Printly · Secure order</span><span>Direct payment to {shop.displayName}</span></footer>
-      <div className="customer-action-bar"><div className="customer-action-inner"><div className="customer-action-total">{quote ? <><b>{money(quote.amountPaise)}</b><small>{quote.billableUnits} {quote.unit}{quote.billableUnits === 1 ? "" : "s"} × {options.copies} {options.copies === 1 ? "copy" : "copies"}</small></> : <span>{uploads.length ? quoteError || "Calculating your price…" : "Upload a file first"}</span>}</div><button type="button" disabled={!quote || submitting || uploading || (!shop.upiId && !shop.cashEnabled)} onClick={() => void placeOrder(paymentMethod)}>{submitting ? "Placing order…" : paymentMethod === "upi" ? "Pay now" : "Place order"}<span aria-hidden="true">→</span></button></div></div>
+      <div className="customer-action-bar"><div className="customer-action-inner"><div className="customer-action-total">{quote ? <><b>{money(quote.amountPaise)}</b><small>{quote.billableUnits} {quote.unit === "pages" ? "page" : "sheet"}{quote.billableUnits === 1 ? "" : "s"} × {options.copies} {options.copies === 1 ? "copy" : "copies"}</small></> : <span>{uploads.length ? quoteError || "Calculating your price…" : "Upload a file first"}</span>}</div><button type="button" disabled={!quote || submitting || uploading || (!shop.upiId && !shop.cashEnabled)} onClick={() => void placeOrder(paymentMethod)}>{submitting ? "Placing order…" : paymentMethod === "upi" ? "Pay now" : "Place order"}<span aria-hidden="true">→</span></button></div></div>
     </div>
   );
 }
 
 function customerOrderStatus(status: string, paymentStatus: string): string {
   if (status === "printed") return "Ready for pickup";
-  if (status === "printing") return "Your order is being printed";
-  if (status === "queued") return "Payment confirmed · queued for printing";
+  if (status === "printing") return "Legacy print status · contact the shop";
+  if (status === "queued") return "Payment confirmed · awaiting manual fulfillment";
   if (status === "needs_approval") return "Payment confirmed · waiting for shop approval";
-  if (status === "failed") return "The shop reported a print issue. Please contact the shop.";
+  if (status === "failed") return "Previous fulfillment issue · please contact the shop.";
   if (status === "rejected") return "The shop could not accept this order. Please contact the shop.";
   if (status === "expired") return "This order expired. Please contact the shop.";
   if (status === "cancelled") return "This order was cancelled.";

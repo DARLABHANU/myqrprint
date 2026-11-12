@@ -17,11 +17,7 @@ import {
 type ShopSummary = {
   displayName: string;
   isOnline: boolean;
-  subscriptionPlan?: string;
-  subscriptionExpiresAt?: string;
-  subscriptionOrderLimit?: number;
-  subscriptionOrdersUsed?: number;
-  notificationPreferences?: { newOrder: boolean; printFailed: boolean; uploadSound: boolean; dailyEmail: boolean };
+  notificationPreferences?: { newOrder: boolean; printFailed: boolean; uploadSound: boolean; customerUploadVoice: boolean; dailyEmail: boolean };
 };
 type AccountSummary = { ownerName: string; email: string };
 type OrderStatus = { id?: string; _id?: string; code: string; status: string };
@@ -32,7 +28,6 @@ const navGroups = [
     { title: "Print jobs", href: "/dashboard/orders", icon: QrCode },
     { title: "Payments", href: "/dashboard/payments", icon: CreditCard },
     { title: "Printers", href: "/dashboard/printers", icon: Settings },
-    { title: "Wallet", href: "/dashboard/withdraw", icon: CreditCard },
     { title: "Reports", href: "/dashboard/reports", icon: BarChart3 },
   ] },
   { label: "SHOP", links: [
@@ -46,12 +41,13 @@ const navGroups = [
 
 function pageTitle(path: string) {
   if (path === "/dashboard" || path === "") return "Overview";
+  if (path.includes("/dashboard/settings")) return "My Profile";
   if (path.includes("/dashboard/setting")) return "Setting";
   if (path.endsWith("/support")) return "Help & support";
   if (/\/orders?$|\/jobs$/.test(path)) return "Print jobs";
   if (path.endsWith("/payments")) return "Payments";
   if (path.endsWith("/printers")) return "Printers";
-  if (path.endsWith("/withdraw") || path.endsWith("/wallet")) return "Wallet";
+  if (path.endsWith("/withdraw") || path.endsWith("/wallet")) return "Payment records";
   if (path.endsWith("/reports")) return "Reports";
   if (path.endsWith("/qr-code")) return "My QR code";
   if (path.endsWith("/subscription")) return "My subscription";
@@ -63,8 +59,8 @@ function pageTitle(path: string) {
 
 function pathIsActive(path: string, href: string) {
   if (href === "/dashboard") return path === href;
-  if (href === "/dashboard/setting/page") return path.includes("/dashboard/setting");
-  if (href === "/dashboard/settings/profile") return path.includes("/dashboard/settings");
+  if (href === "/dashboard/setting/page") return path === "/dashboard/setting" || path.startsWith("/dashboard/setting/");
+  if (href === "/dashboard/settings/profile") return path === "/dashboard/settings" || path.startsWith("/dashboard/settings/");
   return path === href || (href === "/dashboard/orders" && path.endsWith("/jobs"));
 }
 
@@ -102,6 +98,16 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const updateProfile = (event: Event) => {
+      const detail = (event as CustomEvent<{ ownerName: string; displayName: string }>).detail;
+      if (detail?.ownerName) setAccount((current) => current ? { ...current, ownerName: detail.ownerName } : current);
+      if (detail?.displayName) setShop((current) => current ? { ...current, displayName: detail.displayName } : current);
+    };
+    window.addEventListener("printly:profile-updated", updateProfile);
+    return () => window.removeEventListener("printly:profile-updated", updateProfile);
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
     async function pollOrders() {
       try {
@@ -121,6 +127,18 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
             setAlertMessage(message);
             window.setTimeout(() => setAlertMessage((currentMessage) => currentMessage === message ? "" : currentMessage), 8000);
             if ("Notification" in window && Notification.permission === "granted") new Notification("Printly · Shop alert", { body: message });
+            if ("speechSynthesis" in window) {
+              const phrases = [
+                ...(newlyCreated.length && preferences?.newOrder ? ["New order received."] : []),
+                ...(newlyFailed.length && preferences?.printFailed ? ["Print failed. Please check the printer."] : []),
+              ];
+              if (phrases.length) {
+                window.speechSynthesis.cancel();
+                const announcement = new SpeechSynthesisUtterance(phrases.join(" "));
+                announcement.lang = "en-IN";
+                window.speechSynthesis.speak(announcement);
+              }
+            }
             if ((newlyCreated.length && preferences?.uploadSound) || (newlyFailed.length && preferences?.printFailed)) {
               try {
                 const AudioContextType = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -169,11 +187,8 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
     catch (reason) { setError(reason instanceof Error ? reason.message : "Could not sign out."); setBusy(false); }
   }
 
-  const planName = shop?.subscriptionPlan === "demo" ? "Free Demo" : shop?.subscriptionPlan ?? "Shop plan";
-  const ordersUsed = shop?.subscriptionOrdersUsed ?? 0;
-  const orderLimit = shop?.subscriptionOrderLimit ?? 50;
-  const daysLeft = shop?.subscriptionExpiresAt ? Math.max(0, Math.ceil((new Date(shop.subscriptionExpiresAt).getTime() - Date.now()) / 86_400_000)) : undefined;
-  const settingTabs = path.includes("/dashboard/setting") ? [
+  const isSettingRoute = path === "/dashboard/setting" || path.startsWith("/dashboard/setting/");
+  const settingTabs = isSettingRoute ? [
     ["Page setting", "/dashboard/setting/page"], ["Discount setting", "/dashboard/setting/discount"], ["Payment setting", "/dashboard/setting/payment"],
     ["Location lock", "/dashboard/setting/location"], ["Order form", "/dashboard/setting/order-form"], ["Notifications", "/dashboard/setting/notifications"],
   ] : path.includes("/dashboard/settings") ? [
@@ -189,7 +204,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
         <p>{group.label}</p>
         {group.links.map(({ title, href, icon: Icon }) => <a className={`shop-sidebar-link${pathIsActive(path, href) ? " active" : ""}`} href={href} key={title} aria-current={pathIsActive(path, href) ? "page" : undefined} onClick={() => setMobileNavOpen(false)}><Icon size={17} /><span>{title}</span></a>)}
       </nav>)}
-      <a className="shop-plan-summary" href="/dashboard/subscription"><b>{planName}</b><span>{daysLeft === undefined ? "View plan details" : `${daysLeft} days left`}</span><div><i style={{ width: `${Math.min(100, orderLimit ? ordersUsed / orderLimit * 100 : 0)}%` }} /></div><small>{ordersUsed} / {orderLimit} print orders</small></a>
+      <a className="shop-plan-summary" href="/dashboard/subscription"><b>Subscriptions</b><span>Coming soon</span><small>No billing or order limits are active.</small></a>
       <small className="shop-sidebar-version">PRINTLY · SHOP WORKSPACE</small>
     </aside>
     {mobileNavOpen && <button className="shop-sidebar-backdrop" type="button" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />}
@@ -209,8 +224,10 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
       <main className="shop-dashboard-content">
         {error && <div className="shop-shell-error" role="alert">{error}</div>}
         {loading && <div className="shop-shell-loading" aria-hidden="true" />}
-        {settingTabs.length > 0 && <nav className="shop-settings-tabs" aria-label={path.includes("/dashboard/setting") ? "Setting" : "My Profile"}>{settingTabs.map(([label, href]) => <a key={href} className={path === href || (href.endsWith("/page") && path === "/dashboard/setting") || (href.endsWith("/profile") && path === "/dashboard/settings") ? "active" : ""} href={href}>{label}</a>)}</nav>}
-        {children}
+        <div className={`shop-dashboard-inner${settingTabs.length ? " has-setting-tabs" : ""}`}>
+          {settingTabs.length > 0 && <nav className="shop-settings-tabs" aria-label={isSettingRoute ? "Setting" : "My Profile"}>{settingTabs.map(([label, href]) => <a key={href} className={path === href || (href.endsWith("/page") && path === "/dashboard/setting") || (href.endsWith("/profile") && path === "/dashboard/settings") ? "active" : ""} href={href}>{label}</a>)}</nav>}
+          <div className="shop-dashboard-view">{children}</div>
+        </div>
       </main>
     </div>
     {alertMessage && <div className="shop-dashboard-toast" role="status">{alertMessage}</div>}

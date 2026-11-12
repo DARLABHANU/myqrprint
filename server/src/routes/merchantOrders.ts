@@ -14,7 +14,7 @@ export const merchantOrdersRouter = Router();
 
 const uploadDirectory = join(process.cwd(), "data", "uploads");
 const actionSchema = z.object({
-  action: z.enum(["confirm_payment", "approve_order", "start_printing", "mark_printed", "mark_failed", "requeue", "reject", "cancel"]),
+  action: z.enum(["confirm_payment", "approve_order", "mark_ready", "requeue", "reject", "cancel"]),
   note: z.string().trim().max(300).optional(),
 }).strict();
 const optionsSchema = z.object({
@@ -50,7 +50,7 @@ function requireOwner(request: Request, response: Response, next: NextFunction) 
 merchantOrdersRouter.use(requireOwner);
 
 async function findOwnerShop(request: Request) {
-  return Shop.findOne({ ownerId: request.session.userId }).select("_id autoApproveAfterPayment notificationPreferences fileRetentionHours");
+  return Shop.findOne({ ownerId: request.session.userId }).select("_id notificationPreferences fileRetentionHours");
 }
 
 function orderSummary(order: InstanceType<typeof PrintOrder>, availableUploads: Set<string>) {
@@ -140,9 +140,6 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
     let nextState;
     try {
       nextState = transitionMerchantOrder(order, parsedBody.data.action);
-      if (parsedBody.data.action === "confirm_payment" && shop.autoApproveAfterPayment) {
-        nextState = transitionMerchantOrder(nextState, "approve_order");
-      }
     } catch (error) {
       response.status(409).json({
         error: error instanceof Error ? error.message : "This order cannot be changed in its current state.",
@@ -152,12 +149,6 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
 
     order.status = nextState.status;
     order.paymentStatus = nextState.paymentStatus;
-    if (parsedBody.data.action === "requeue") {
-      order.agentDeviceId = undefined;
-      order.assignedPrinterId = undefined;
-      order.agentLeaseId = undefined;
-      order.agentLeaseExpiresAt = undefined;
-    }
     if (["printed", "rejected", "cancelled"].includes(nextState.status)) {
       await CustomerUpload.updateMany({ orderId: order._id, state: "attached" }, { $set: { expiresAt: new Date() } });
     }
@@ -167,13 +158,10 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
       timestamp: new Date(),
       note: parsedBody.data.action === "confirm_payment"
         ? `Shopkeeper manually confirmed ${order.paymentMethod === "upi" ? "UPI payment" : "cash"}.${parsedBody.data.note ? ` ${parsedBody.data.note}` : ""}`
-        : parsedBody.data.action === "reject" && nextState.paymentStatus === "paid"
-          ? "Order rejected after payment confirmation; merchant must arrange any refund directly."
+        : ["reject", "cancel"].includes(parsedBody.data.action) && nextState.paymentStatus === "paid"
+          ? "Order ended after payment confirmation; merchant must arrange any refund directly."
           : undefined,
     });
-    if (parsedBody.data.action === "confirm_payment" && nextState.status === "queued") {
-      order.events.push({ type: "auto_approve_order", actorType: "system", timestamp: new Date(), note: "Shop setting automatically approved this payment-confirmed order." });
-    }
     await order.save();
     if (parsedBody.data.action === "requeue") {
       const expiresAt = new Date(Date.now() + Number(shop.fileRetentionHours ?? 24) * 60 * 60 * 1000);

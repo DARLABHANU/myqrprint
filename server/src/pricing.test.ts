@@ -104,7 +104,7 @@ test("merchant confirmation marks UPI as paid and holds the order for approval",
   );
 });
 
-test("merchant approves a paid order before printing", () => {
+test("merchant approves a paid order for manual fulfillment", () => {
   const approved = transitionMerchantOrder({
     status: "needs_approval",
     paymentMethod: "upi",
@@ -113,23 +113,22 @@ test("merchant approves a paid order before printing", () => {
   assert.equal(approved.status, "queued");
 });
 
-test("merchant cannot start printing before payment confirmation", () => {
+test("merchant cannot mark an unpaid order ready for pickup", () => {
   assert.throws(
     () => transitionMerchantOrder({
       status: "awaiting_cash",
       paymentMethod: "cash",
       paymentStatus: "awaiting_cash",
-    }, "start_printing"),
-    /Only paid orders in the queue/,
+    }, "mark_ready"),
+    /Only a paid order in manual fulfillment/,
   );
 });
 
-test("merchant order moves through printing to ready for pickup", () => {
-  const printing = transitionMerchantOrder({
+test("merchant moves a paid order from manual fulfillment to ready for pickup", () => {
+  const ready = transitionMerchantOrder({
     status: "queued",
     paymentMethod: "cash",
     paymentStatus: "paid",
-  }, "start_printing");
-  assert.equal(printing.status, "printing");
-  assert.equal(transitionMerchantOrder(printing, "mark_printed").status, "printed");
+  }, "mark_ready");
+  assert.equal(ready.status, "printed");
 });

@@ -68,7 +68,7 @@ type ShopInfo = {
   notificationPreferences?: { newOrder: boolean; printFailed: boolean; uploadSound: boolean; dailyEmail: boolean };
 };
 type OrderOptions = MerchantOrder["options"];
-type Action = "confirm_payment" | "approve_order" | "start_printing" | "mark_printed" | "mark_failed" | "requeue" | "reject" | "cancel";
+type Action = "confirm_payment" | "approve_order" | "mark_ready" | "requeue" | "reject" | "cancel";
 type Filter = "all" | "approval" | "queue" | "printing" | "cash" | "printed" | "failed";
 
 const photoLayouts = [
@@ -84,10 +84,10 @@ const statusLabels: Record<OrderStatus, string> = {
   awaiting_payment: "UPI payment to verify",
   awaiting_cash: "Cash due at counter",
   needs_approval: "Needs approval",
-  queued: "In print queue",
-  printing: "Printing",
+  queued: "Awaiting manual fulfillment",
+  printing: "Legacy print status",
   printed: "Ready for pickup",
-  failed: "Print issue",
+  failed: "Previous fulfillment issue",
   rejected: "Rejected",
   cancelled: "Cancelled",
   expired: "Expired",
@@ -96,8 +96,8 @@ const statusLabels: Record<OrderStatus, string> = {
 const filterLabels: Array<{ id: Filter; label: string }> = [
   { id: "all", label: "All" },
   { id: "approval", label: "Needs approval" },
-  { id: "queue", label: "Queued" },
-  { id: "printing", label: "Printing" },
+  { id: "queue", label: "Manual fulfillment" },
+  { id: "printing", label: "Legacy status" },
   { id: "cash", label: "Awaiting cash" },
   { id: "printed", label: "Printed" },
   { id: "failed", label: "Failed" },
@@ -149,19 +149,18 @@ function availableActions(order: MerchantOrder): Array<{ action: Action; label: 
       ];
     case "needs_approval":
       return [
-        { action: "approve_order", label: "Approve for printing", primary: true },
+        { action: "approve_order", label: "Approve for manual fulfillment", primary: true },
         { action: "reject", label: "Reject order" },
         { action: "cancel", label: "Cancel order" },
       ];
     case "queued":
-      return [{ action: "start_printing", label: "Start printing", primary: true }, { action: "cancel", label: "Cancel order" }];
+      return [{ action: "mark_ready", label: "Mark ready for pickup", primary: true }, { action: "cancel", label: "Cancel order" }];
     case "printing":
       return [
-        { action: "mark_printed", label: "Ready for pickup", primary: true },
-        { action: "mark_failed", label: "Report print issue" },
+        { action: "mark_ready", label: "Mark ready for pickup", primary: true },
       ];
     case "failed":
-      return [{ action: "requeue", label: "Return to queue", primary: true }, { action: "cancel", label: "Cancel order" }];
+      return [{ action: "requeue", label: "Return to manual fulfillment", primary: true }, { action: "cancel", label: "Cancel order" }];
     default:
       return [];
   }
@@ -258,9 +257,9 @@ export function OrderManagementPage() {
       const result = await response.json() as { order: MerchantOrder };
       setOrders((current) => current.map((item) => item.id === order.id ? result.order : item));
       setNotice(action === "confirm_payment"
-        ? "Payment confirmed manually. Review the order and approve it for printing."
+        ? "Payment confirmed manually. Review the order and approve it for manual fulfillment."
         : action === "approve_order"
-          ? "Order approved and moved to the print queue."
+          ? "Order approved for manual fulfillment."
           : "Order status updated.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not update this order.");
@@ -347,7 +346,7 @@ export function OrderManagementPage() {
           <a className="sidebar-link" href="/dashboard/printers">Printers & routing</a>
           <a className="sidebar-link" href="/dashboard/qr-code">My QR code</a>
           <a className="sidebar-link" href="/dashboard/subscription">Subscription</a>
-          <a className="sidebar-link" href="/dashboard/withdraw">Wallet & earnings</a>
+          <a className="sidebar-link" href="/dashboard/payments">Direct payment records</a>
           <a className="sidebar-link" href="/dashboard/support">Help & support</a>
           <div className="sidebar-help"><CircleHelp size={17} /><b>Payment safety</b><p>UPI receipts are not verified automatically. Confirm payment only after checking your account.</p></div>
         </aside>
@@ -415,8 +414,8 @@ export function OrderManagementPage() {
                     {!order.files.some((file) => file.available) && <small className="order-file-expired">Private file retention expired; the original upload is no longer available.</small>}
                   </div>
                   <div className="merchant-order-actions">
-                    {availableActions(order).map(({ action, label, primary }) => <button key={action} type="button" className={primary ? "primary" : action === "reject" || action === "cancel" || action === "mark_failed" ? "danger" : ""} disabled={busyOrderId === order.id} onClick={() => void updateOrder(order, action)}>
-                      {busyOrderId === order.id ? <LoaderCircle className="spin" size={14} /> : action === "requeue" ? <RotateCcw size={14} /> : action === "reject" ? <X size={14} /> : action === "mark_printed" || action === "confirm_payment" ? <Check size={14} /> : <Printer size={14} />}
+                    {availableActions(order).map(({ action, label, primary }) => <button key={action} type="button" className={primary ? "primary" : action === "reject" || action === "cancel" ? "danger" : ""} disabled={busyOrderId === order.id} onClick={() => void updateOrder(order, action)}>
+                      {busyOrderId === order.id ? <LoaderCircle className="spin" size={14} /> : action === "requeue" ? <RotateCcw size={14} /> : action === "reject" ? <X size={14} /> : action === "mark_ready" || action === "confirm_payment" ? <Check size={14} /> : <Printer size={14} />}
                       {label}
                     </button>)}
                   </div>

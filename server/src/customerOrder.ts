@@ -98,7 +98,11 @@ export function calculateCustomerQuote(
   const quote = calculateQuote(billablePages, options.copies, ratePaise, options.duplex);
   const discountUnits = billablePages * options.copies;
   const matchingTier = (shop.discountTiers ?? []).filter((tier) => tier.minUnits != null && tier.maxUnits != null && tier.percent != null && discountUnits >= tier.minUnits && discountUnits <= tier.maxUnits).reduce((best, tier) => Math.max(best, tier.percent ?? 0), 0);
-  const discountPercent = Math.max(matchingTier, shop.bulkDiscountMinPages > 0 && discountUnits >= shop.bulkDiscountMinPages ? shop.bulkDiscountPercent : 0);
+  const matchingPaperDiscount = (shop.discountGroups ?? []).filter((group) => group.paperSize === "all" || group.paperSize === options.paperSize)
+    .flatMap((group) => group.ranges)
+    .filter((range) => range.minPages != null && discountUnits >= range.minPages && (range.maxPages == null || discountUnits <= range.maxPages))
+    .reduce((best, range) => Math.max(best, range.percent ?? 0), 0);
+  const discountPercent = Math.max(matchingTier, matchingPaperDiscount, shop.bulkDiscountMinPages > 0 && discountUnits >= shop.bulkDiscountMinPages ? shop.bulkDiscountPercent : 0);
   const discountPaise = Math.floor((quote.amountPaise * discountPercent) / 100);
   const amountPaise = quote.amountPaise - discountPaise;
   if (!Number.isSafeInteger(amountPaise) || amountPaise <= 0) {

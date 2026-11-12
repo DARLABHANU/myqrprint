@@ -16,6 +16,9 @@ import { Shop } from "../models/Shop.js";
 import { ShopPrinter } from "../models/ShopPrinter.js";
 
 export const agentRouter = Router();
+agentRouter.use((_request, response) => {
+  response.status(503).json({ error: "Print-agent service is temporarily paused. Orders can still be managed manually." });
+});
 const authenticatedAgentRouter = Router();
 const shopOwnerRouter = Router();
 const uploadDirectory = join(process.cwd(), "data", "uploads");

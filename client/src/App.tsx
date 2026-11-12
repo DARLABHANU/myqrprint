@@ -18,7 +18,7 @@ import { AccountPage, ShopQrCodePage, ShopSettingsPage } from "./ShopWorkspace";
 import { OrderManagementPage } from "./OrderManagementPage";
 import { CustomerOrderPage } from "./CustomerOrderPage";
 import { LegalPage } from "./LegalPage";
-import { PublicContentPage } from "./PublicContentPage";
+import { PublicMarketingPages } from "./PublicMarketingPages";
 import { DashboardTools } from "./DashboardTools";
 import { ReportsDashboardPage } from "./ReportsDashboardPage";
 import { PrinterManagementPage } from "./PrinterManagementPage";
@@ -48,9 +48,9 @@ const steps = [
   },
   {
     number: "03",
-    title: "You print, they pick up",
+    title: "You fulfill, they pick up",
     description:
-      "Review the order, confirm payment, and get it ready at your counter.",
+      "Confirm payment, handle fulfillment manually while printer automation is paused, and update pickup status.",
     icon: Printer,
   },
 ];
@@ -59,7 +59,7 @@ const benefits = [
   "No app or account needed for your customers",
   "UPI goes directly to your shop",
   "Private uploads with clear retention controls",
-  "You decide when an order is ready to print",
+  "You manage payment, manual fulfillment, and pickup status",
 ];
 
 export default function App() {
@@ -106,9 +106,9 @@ export default function App() {
   if (path === "/admin/subscriptions") return <AdminSubscriptionReviewPage />;
   if (path === "/terms") return <LegalPage kind="terms" />;
   if (path === "/privacy-policy") return <LegalPage kind="privacy" />;
-  if (path === "/refund-policy") return <PublicContentPage path={path} />;
-  if (["/features", "/how-it-works", "/pricing", "/faq", "/about", "/contact", "/partner", "/solutions", "/solutions/cyber-cafe", "/solutions/xerox-shop", "/solutions/csc-center", "/solutions/college-library"].includes(path)) return <PublicContentPage path={path} />;
-  if (path !== "/") return <PublicContentPage path={path} />;
+  if (path === "/refund-policy") return <PublicMarketingPages path={path} />;
+  if (["/features", "/how-it-works", "/pricing", "/faq", "/about", "/contact", "/partner", "/solutions", "/solutions/cyber-cafe", "/solutions/xerox-shop", "/solutions/csc-center", "/solutions/college-library"].includes(path)) return <PublicMarketingPages path={path} />;
+  if (path !== "/") return <PublicMarketingPages path={path} />;
   return <LandingPage />;
 }
 
@@ -136,7 +136,7 @@ function LandingPage() {
   return (
     <div className="site-shell">
       <header className="site-header">
-        <a className="brand" href="#" aria-label="Printly home" onClick={closeMenu}>
+        <a className="brand" href="/" aria-label="Printly home" onClick={closeMenu}>
           <span className="brand-mark"><QrCode size={21} strokeWidth={2.2} /></span>
           <span>printly<span className="brand-period">.</span></span>
         </a>
@@ -155,6 +155,7 @@ function LandingPage() {
           <a href="#how-it-works" onClick={closeMenu}>How it works</a>
           <a href="#features" onClick={closeMenu}>Features</a>
           <a href="#pricing" onClick={closeMenu}>Pricing</a>
+          <a href="/solutions" onClick={closeMenu}>Solutions</a>
           <a href="#faq" onClick={closeMenu}>FAQ</a>
           <a href="#for-shops" onClick={closeMenu}>For print shops</a>
           <a className="nav-login" href="/login" onClick={closeMenu}>Log in</a>
@@ -168,10 +169,9 @@ function LandingPage() {
         <section className="hero-section">
           <div className="hero-copy">
             <div className="eyebrow"><span className="eyebrow-dot" /> Made for the modern print shop</div>
-            <h1>Less time<br />taking orders.<br /><span>More time printing.</span></h1>
+            <h1>Less time<br />taking orders.<br /><span>More control at pickup.</span></h1>
             <p className="hero-description">
-              Let customers send print jobs from their phone. You set the prices,
-              confirm the payment, and stay in charge of every order.
+              Let customers send orders from their phone. You set prices and confirm direct payments. Printer automation is paused; manual order management remains available.
             </p>
             <div className="hero-actions">
               <a className="button button-dark button-large" href="/register">
@@ -229,8 +229,8 @@ function LandingPage() {
         <section className="steps-section" id="how-it-works">
           <div className="section-heading">
             <div>
-              <div className="eyebrow"><span className="eyebrow-dot" /> A simpler way to print</div>
-              <h2>From scan to print.<br /><span>Without the back-and-forth.</span></h2>
+              <div className="eyebrow"><span className="eyebrow-dot" /> A simpler way to take orders</div>
+              <h2>From scan to order.<br /><span>Without the back-and-forth.</span></h2>
             </div>
             <p>One easy flow for your customers. A clearer queue for you. No more chasing files across chats.</p>
           </div>
@@ -249,8 +249,8 @@ function LandingPage() {
         <section className="control-section" id="features">
           <div className="control-visual" aria-hidden="true">
             <div className="control-window">
-              <div className="window-top"><span /><span /><span /><b>Today’s print queue</b><small>● Shop online</small></div>
-              <div className="queue-summary"><span><small>NEW ORDERS</small><b>03</b></span><span><small>AWAITING PAYMENT</small><b>02</b></span><span><small>READY TO PRINT</small><b>01</b></span></div>
+              <div className="window-top"><span /><span /><span /><b>Today’s orders</b><small>● Shop online</small></div>
+              <div className="queue-summary"><span><small>NEW ORDERS</small><b>03</b></span><span><small>AWAITING PAYMENT</small><b>02</b></span><span><small>MANUAL FULFILLMENT</small><b>01</b></span></div>
               <div className="queue-row"><span className="file-thumb"><FileText size={17} /></span><span><b>Assignment-final.pdf</b><small>4 pages · A4 B&W</small></span><strong>₹20</strong><span className="status-pill">Review</span></div>
               <div className="queue-row"><span className="file-thumb image-thumb"><span>IMG</span></span><span><b>passport-photo.jpg</b><small>2 copies · 4 × 6 layout</small></span><strong>₹40</strong><span className="status-pill status-green">Paid</span></div>
               <div className="queue-row"><span className="file-thumb"><FileText size={17} /></span><span><b>Form-2026.pdf</b><small>2 pages · A4 colour</small></span><strong>₹30</strong><span className="status-pill status-muted">Cash</span></div>
@@ -271,14 +271,14 @@ function LandingPage() {
         <section className="marketing-pricing-section" id="pricing">
           <div className="marketing-section-heading">
             <div className="eyebrow"><span className="eyebrow-dot" /> Clear pricing, your way</div>
-            <h2>You set print prices.<br /><span>Your shop gets paid directly.</span></h2>
-            <p>Printly calculates each order from the rates you configure. Payments stay between the customer and your shop.</p>
+            <h2>Subscriptions are<br /><span>coming soon.</span></h2>
+            <p>Subscription billing is unavailable. Customer shop orders are not restricted by legacy plan dates or order limits.</p>
           </div>
           <div className="marketing-pricing-card">
-            <div><span className="pricing-card-kicker">FOR YOUR SHOP</span><h3>No per-order platform commission</h3><p>This build does not collect customer payments or add a platform fee to a print order.</p></div>
-            <ul><li><Check size={15} /> Set your own paper and print rates</li><li><Check size={15} /> UPI paid directly to your shop or cash at counter</li><li><Check size={15} /> Review and confirm payment manually</li></ul>
-            <a className="button button-dark" href="/register">Set up a shop <ArrowRight size={15} /></a>
-            <small>Any future subscription or hosting charges are not configured in this development preview.</small>
+            <div><span className="pricing-card-kicker">NOT AVAILABLE YET</span><h3>No subscription checkout</h3><p>This section is informational only. Do not send a subscription payment or transaction reference.</p></div>
+            <ul><li><Check size={15} /> No subscription billing or payment requests</li><li><Check size={15} /> No subscription expiry enforcement</li><li><Check size={15} /> No customer-order quota</li></ul>
+            <a className="button button-dark" href="/pricing">Subscription details <ArrowRight size={15} /></a>
+            <small>Customer payments, when enabled by a shop, are paid directly to that shop by UPI or cash.</small>
           </div>
         </section>
 
@@ -292,7 +292,8 @@ function LandingPage() {
             <details><summary>Who sets the print prices?</summary><p>You configure prices by paper size, colour, and single- or double-sided printing. The server calculates the customer’s quote from those saved rates.</p></details>
             <details><summary>What files can customers upload?</summary><p>Customers can submit PDF documents or JPG, PNG, and WEBP photos. Uploads are private, validated, and limited to 10 files at up to 25 MB per file.</p></details>
             <details><summary>How long are uploaded files retained?</summary><p>Each shop sets a pending-file retention period in its settings. Files for active jobs remain available until the order is completed or cancelled.</p></details>
-            <details><summary>Do I need a special printer or desktop agent?</summary><p>No printer hardware integration is required in this version. Download available order files and manage the print status from your shop dashboard.</p></details>
+            <details><summary>Is printer automation available?</summary><p>No. Printer setup, printer pairing, routing, and automatic print-job execution are temporarily paused. You can still review customer orders and manage manual fulfillment.</p></details>
+            <details><summary>Are shop subscriptions available?</summary><p>No. The subscription page is a placeholder. No subscription payments, expiry rules, or customer-order quotas are active.</p></details>
           </div>
         </section>
 
@@ -324,10 +325,10 @@ function LandingPage() {
       </main>
 
       <footer className="site-footer">
-        <a className="brand footer-brand" href="#" aria-label="Printly home"><span className="brand-mark"><QrCode size={18} /></span><span>printly<span className="brand-period">.</span></span></a>
+        <a className="brand footer-brand" href="/" aria-label="Printly home"><span className="brand-mark"><QrCode size={18} /></span><span>printly<span className="brand-period">.</span></span></a>
         <span>Thoughtful tools for your local print shop.</span>
-        <nav className="site-footer-links" aria-label="Footer navigation"><a href="#pricing">Pricing</a><a href="#faq">FAQ</a><a href="#contact">Contact</a><a href="/terms">Terms</a><a href="/privacy-policy">Privacy</a></nav>
-        <span>© 2026 Printly</span>
+        <nav className="site-footer-links" aria-label="Footer navigation"><a href="/features">Features</a><a href="/how-it-works">How it works</a><a href="/pricing">Pricing</a><a href="/solutions">Solutions</a><a href="/printing-software">Print by city</a><a href="/blog">Guides</a><a href="/faq">FAQ</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/partner">Partner</a><a href="/terms">Terms</a><a href="/privacy-policy">Privacy</a><a href="/refund-policy">Refund policy</a></nav>
+        <span>© {new Date().getFullYear()} Printly</span>
       </footer>
     </div>
   );

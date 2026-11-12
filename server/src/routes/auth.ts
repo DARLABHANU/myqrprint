@@ -21,6 +21,7 @@ const registerSchema = z.object({
   shopName: z.string().trim().min(2).max(100),
   mobile: z.string().trim().regex(/^[+0-9 ()-]{7,20}$/),
   email: z.string().email().max(254).transform((value) => value.toLowerCase().trim()),
+  password: z.string().min(12).max(128),
   termsAccepted: z.literal(true),
 });
 
@@ -78,9 +79,9 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
       response.status(503).json({ error: "Account email delivery is not configured." });
       return;
     }
-    const { ownerName, shopName, mobile, email } = parsed.data;
+    const { ownerName, shopName, mobile, email, password } = parsed.data;
     if (await User.exists({ email })) {
-      response.status(409).json({ error: "An account with this email already exists. Sign in with an email code instead." });
+      response.status(409).json({ error: "An account with this email already exists. Sign in with your password or reset it." });
       return;
     }
     let pending = await PendingRegistration.findOne({ email });
@@ -93,6 +94,7 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
     pending.ownerName = ownerName;
     pending.shopName = shopName;
     pending.mobile = mobile;
+    pending.passwordHash = await bcrypt.hash(password, 12);
     pending.termsAcceptedAt = new Date();
     pending.codeHash = digest(code);
     pending.expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -122,7 +124,7 @@ authRouter.post("/register/verify-code", authLimiter, async (request, response, 
   const parsed = emailSchema.extend({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Enter the email address and six-digit code." }); return; }
   try {
-    const pending = await PendingRegistration.findOne({ email: parsed.data.email }).select("+codeHash");
+    const pending = await PendingRegistration.findOne({ email: parsed.data.email }).select("+codeHash +passwordHash");
     if (!pending || pending.expiresAt <= new Date() || pending.attempts >= 5) {
       response.status(400).json({ error: "That registration code is invalid or expired. Request a new code." }); return;
     }
@@ -132,8 +134,12 @@ authRouter.post("/register/verify-code", authLimiter, async (request, response, 
       response.status(400).json({ error: pending.attempts >= 5 ? "Too many incorrect codes. Request a new one." : "That code is incorrect. Check it and try again." });
       return;
     }
-    const { ownerName, shopName, mobile, email, termsAcceptedAt } = pending;
-    const user = await User.create({ ownerName, email, termsAcceptedAt, emailVerifiedAt: new Date() });
+    const { ownerName, shopName, mobile, email, termsAcceptedAt, passwordHash } = pending;
+    if (!passwordHash) {
+      response.status(400).json({ error: "This registration is incomplete. Start again and choose a password." });
+      return;
+    }
+    const user = await User.create({ ownerName, email, passwordHash, termsAcceptedAt, emailVerifiedAt: new Date() });
     try {
       await Shop.create({ ownerId: user._id, slug: makeSlug(shopName), displayName: shopName, ownerName, mobile, email });
     } catch (error) {
@@ -145,43 +151,11 @@ authRouter.post("/register/verify-code", authLimiter, async (request, response, 
     response.status(201).json({ user: { id: String(user._id), ownerName, email } });
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === 11000) {
-      response.status(409).json({ error: "An account with this email already exists. Sign in with an email code instead." });
+      response.status(409).json({ error: "An account with this email already exists. Sign in with your password or reset it." });
       return;
     }
     next(error);
   }
-});
-
-authRouter.post("/login/request-code", authLimiter, async (request, response, next) => {
-  const parsed = emailSchema.safeParse(request.body);
-  if (!parsed.success) { response.status(400).json({ error: "Enter a valid email address." }); return; }
-  if (!isMailConfigured()) { response.status(503).json({ error: "Email delivery is not configured." }); return; }
-  try {
-    const user = await User.findOne({ email: parsed.data.email }).select("ownerName email emailVerifiedAt");
-    if (user) {
-      const codeState = await User.findById(user._id).select("+loginCodeSentAt");
-      if (codeState?.loginCodeSentAt && Date.now() - codeState.loginCodeSentAt.getTime() < 60_000) {
-        response.json({ otpRequired: true, message: "If a verified account exists for this email, a sign-in code has been sent. Wait a minute before requesting another." });
-        return;
-      }
-      const code = makeOtp();
-      user.loginCodeHash = digest(code);
-      user.loginCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-      user.loginCodeSentAt = new Date();
-      user.loginCodeAttempts = 0;
-      await user.save();
-      request.session.pendingOtpUserId = String(user._id);
-      await new Promise<void>((resolve, reject) => request.session.save((error) => error ? reject(error) : resolve()));
-      try {
-        await sendAccountEmail(user.email, "Your Printly sign-in code", `Your Printly sign-in code is ${code}. It expires in 10 minutes. If you did not request it, you can ignore this email.`);
-      } catch (error) {
-        user.loginCodeHash = undefined; user.loginCodeExpiresAt = undefined; await user.save();
-        request.session.pendingOtpUserId = undefined;
-        throw error;
-      }
-    }
-    response.json({ otpRequired: true, message: "If a verified account exists for this email, a sign-in code has been sent." });
-  } catch (error) { next(error); }
 });
 
 authRouter.post("/login", authLimiter, async (request, response, next) => {
@@ -201,62 +175,11 @@ authRouter.post("/login", authLimiter, async (request, response, next) => {
       response.status(403).json({ error: "Verify your email before signing in." });
       return;
     }
-    if (user.twoFactorEnabled) {
-      if (!isMailConfigured()) { response.status(503).json({ error: "Email delivery must be configured before enabling two-step verification." }); return; }
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      user.loginCodeHash = digest(code);
-      user.loginCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-      await user.save();
-      request.session.pendingTwoFactorUserId = String(user._id);
-      await new Promise<void>((resolve, reject) => request.session.save((error) => error ? reject(error) : resolve()));
-      await sendAccountEmail(user.email, "Your Printly sign-in code", `Your sign-in code is ${code}. It expires in 10 minutes.`);
-      response.json({ twoFactorRequired: true });
-      return;
-    }
     await regenerateSession(request, String(user._id));
     response.json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email } });
   } catch (error) {
     next(error);
   }
-});
-
-authRouter.post("/login/verify-code", authLimiter, async (request, response, next) => {
-  const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
-  const otpUserId = request.session.pendingOtpUserId;
-  const twoFactorUserId = request.session.pendingTwoFactorUserId;
-  const userId = otpUserId ?? twoFactorUserId;
-  if (!parsed.success || !userId || !isValidObjectId(userId)) { response.status(400).json({ error: "Enter the six-digit sign-in code." }); return; }
-  try {
-    const user = await User.findById(userId).select("ownerName email twoFactorEnabled emailVerifiedAt +loginCodeHash +loginCodeExpiresAt +loginCodeAttempts");
-    if (!user || (!otpUserId && !user.emailVerifiedAt) || (twoFactorUserId && !user.twoFactorEnabled) || !user.loginCodeHash || !user.loginCodeExpiresAt || user.loginCodeExpiresAt <= new Date() || (user.loginCodeAttempts ?? 0) >= 5) {
-      response.status(401).json({ error: "That sign-in code is invalid or expired." }); return;
-    }
-    if (!matchesDigest(parsed.data.code, user.loginCodeHash)) {
-      user.loginCodeAttempts = (user.loginCodeAttempts ?? 0) + 1;
-      await user.save();
-      response.status(401).json({ error: user.loginCodeAttempts >= 5 ? "Too many incorrect codes. Request a new one." : "That sign-in code is incorrect." });
-      return;
-    }
-    user.loginCodeHash = undefined; user.loginCodeExpiresAt = undefined; user.loginCodeAttempts = 0;
-    if (otpUserId && !user.emailVerifiedAt) user.emailVerifiedAt = new Date();
-    await user.save();
-    request.session.pendingOtpUserId = undefined;
-    request.session.pendingTwoFactorUserId = undefined;
-    await regenerateSession(request, String(user._id));
-    response.json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email } });
-  } catch (error) { next(error); }
-});
-
-authRouter.post("/two-factor", async (request, response, next) => {
-  const parsed = z.object({ enabled: z.boolean() }).safeParse(request.body);
-  const userId = request.session.userId;
-  if (!parsed.success || !userId || !isValidObjectId(userId)) { response.status(400).json({ error: "Sign in and choose a valid setting." }); return; }
-  if (parsed.data.enabled && !isMailConfigured()) { response.status(503).json({ error: "Configure SMTP email delivery before enabling two-step verification." }); return; }
-  try {
-    const user = await User.findByIdAndUpdate(userId, { $set: { twoFactorEnabled: parsed.data.enabled } }, { new: true }).select("twoFactorEnabled");
-    if (!user) { response.status(404).json({ error: "Account not found." }); return; }
-    response.json({ enabled: user.twoFactorEnabled });
-  } catch (error) { next(error); }
 });
 
 authRouter.post("/change-password", authLimiter, async (request, response, next) => {
@@ -347,13 +270,13 @@ authRouter.get("/me", async (request, response, next) => {
     return;
   }
   try {
-    const user = await User.findById(userId).select("ownerName email twoFactorEnabled");
+    const user = await User.findById(userId).select("ownerName email");
     if (!user) {
       request.session.destroy(() => undefined);
       response.status(401).json({ error: "Sign in to continue." });
       return;
     }
-    response.json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email, twoFactorEnabled: user.twoFactorEnabled } });
+    response.json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email } });
   } catch (error) {
     next(error);
   }

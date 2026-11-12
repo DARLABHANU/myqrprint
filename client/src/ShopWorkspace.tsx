@@ -7,6 +7,8 @@ import {
   CreditCard,
   Copy,
   Download,
+  Eye,
+  EyeOff,
   ExternalLink,
   FileText,
   Image as ImageIcon,
@@ -28,7 +30,6 @@ type User = {
   id: string;
   ownerName: string;
   email: string;
-  twoFactorEnabled?: boolean;
 };
 
 type Rate = {
@@ -42,6 +43,7 @@ type ShopSettings = {
   slug: string;
   displayName: string;
   ownerName: string;
+  logoDataUrl: string;
   mobile: string;
   email: string;
   address: string;
@@ -59,26 +61,20 @@ type ShopSettings = {
   bulkDiscountMinPages: number;
   bulkDiscountPercent: number;
   discountTiers: Array<{ minUnits: number; maxUnits: number; percent: number }>;
+  discountGroups: Array<{ paperSize: "all" | "A3" | "A4" | "A5" | "Legal"; ranges: Array<{ minPages: number; maxPages?: number | null; percent: number }> }>;
   collectCustomerName: boolean;
   collectCustomerMobile: boolean;
   fileRetentionHours: number;
-  autoApproveAfterPayment: boolean;
   enabledPaperSizes: string[];
   colourEnabled: boolean;
   duplexEnabled: boolean;
   maxCopies: number;
   rates: Record<string, Rate>;
-  notificationPreferences: { newOrder: boolean; printFailed: boolean; uploadSound: boolean; dailyEmail: boolean };
+  notificationPreferences: { newOrder: boolean; printFailed: boolean; uploadSound: boolean; customerUploadVoice: boolean; dailyEmail: boolean };
 };
 
 const sizes = ["A4", "A5", "Legal", "A3"] as const;
-const rateFields: Array<{ key: keyof Rate; label: string; helper: string }> = [
-  { key: "blackWhiteSimplexPaise", label: "B&W, one-sided", helper: "per printed page" },
-  { key: "colourSimplexPaise", label: "Colour, one-sided", helper: "per printed page" },
-  { key: "blackWhiteDuplexSheetPaise", label: "B&W, double-sided", helper: "per physical sheet" },
-  { key: "colourDuplexSheetPaise", label: "Colour, double-sided", helper: "per physical sheet" },
-];
-
+const indianStates = ["Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu & Kashmir", "Jharkhand", "Karnataka", "Kerala", "Ladakh", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"];
 const emptyRate: Rate = {
   blackWhiteSimplexPaise: 0,
   colourSimplexPaise: 0,
@@ -91,6 +87,7 @@ function createEmptyShop(): ShopSettings {
     slug: "",
     displayName: "",
     ownerName: "",
+    logoDataUrl: "",
     mobile: "",
     email: "",
     address: "",
@@ -106,16 +103,16 @@ function createEmptyShop(): ShopSettings {
     bulkDiscountMinPages: 0,
     bulkDiscountPercent: 0,
     discountTiers: [],
+    discountGroups: [],
     collectCustomerName: false,
     collectCustomerMobile: false,
     fileRetentionHours: 24,
-    autoApproveAfterPayment: false,
     enabledPaperSizes: ["A4"],
     colourEnabled: false,
     duplexEnabled: false,
     maxCopies: 100,
     rates: { A4: { ...emptyRate }, A5: { ...emptyRate }, Legal: { ...emptyRate }, A3: { ...emptyRate } },
-    notificationPreferences: { newOrder: true, printFailed: true, uploadSound: false, dailyEmail: false },
+    notificationPreferences: { newOrder: true, printFailed: true, uploadSound: false, customerUploadVoice: true, dailyEmail: false },
   };
 }
 
@@ -203,6 +200,8 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
   const [accountNotice, setAccountNotice] = useState("");
   const [otpStage, setOtpStage] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -211,16 +210,24 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
     setBusy(true);
     try {
       if (otpStage) {
-        await requestJson<{ user: User }>(isRegister ? "/api/auth/register/verify-code" : "/api/auth/login/verify-code", {
+        await requestJson<{ user: User }>("/api/auth/register/verify-code", {
           method: "POST",
           body: JSON.stringify({ email: values.email, code: otpCode }),
         });
         window.location.assign("/dashboard");
         return;
       }
-      const result = await requestJson<{ otpRequired: boolean; message: string }>(isRegister ? "/api/auth/register" : "/api/auth/login/request-code", {
+      if (!isRegister) {
+        await requestJson<{ user: User }>("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email: values.email, password }),
+        });
+        window.location.assign("/dashboard");
+        return;
+      }
+      const result = await requestJson<{ otpRequired: boolean; message: string }>("/api/auth/register", {
         method: "POST",
-        body: JSON.stringify(isRegister ? values : { email: values.email }),
+        body: JSON.stringify({ ...values, password }),
       });
       setOtpStage(result.otpRequired);
       setOtpCode("");
@@ -232,12 +239,10 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
     }
   }
 
-  async function resendOtp() {
+  async function resendRegistrationCode() {
     setError(""); setBusy(true);
     try {
-      const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login/request-code";
-      const payload = isRegister ? values : { email: values.email };
-      const result = await requestJson<{ message: string }>(endpoint, { method: "POST", body: JSON.stringify(payload) });
+      const result = await requestJson<{ message: string }>("/api/auth/register", { method: "POST", body: JSON.stringify({ ...values, password }) });
       setAccountNotice(result.message);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not resend the code."); }
     finally { setBusy(false); }
@@ -253,7 +258,7 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
         <a className="back-link" href="/"><ArrowLeft size={15} /> Back to home</a>
         <div className="eyebrow"><span className="eyebrow-dot" /> YOUR SHOP, SIMPLIFIED</div>
         <h1>{isRegister ? "Set up your shop." : "Welcome back."}</h1>
-        <p className="account-intro">{isRegister ? "Create your owner account. We’ll verify your email with a one-time code." : "Sign in securely with a one-time code sent to your email."}</p>
+        <p className="account-intro">{isRegister ? "Create your owner account with an email and password. We’ll verify your email to finish setup." : "Sign in to your shop dashboard with your email and password."}</p>
         {accountNotice && <div className="success-alert" role="status">{accountNotice}</div>}
         <form className="account-form" onSubmit={submit}>
           {isRegister && !otpStage && <>
@@ -262,19 +267,20 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
             <label>Mobile number<input autoComplete="tel" type="tel" required minLength={7} maxLength={20} value={values.mobile} onChange={(event) => setValues({ ...values, mobile: event.target.value })} /></label>
           </>}
           <label>Email address<input autoComplete="email" type="email" required maxLength={254} readOnly={otpStage} value={values.email} onChange={(event) => setValues({ ...values, email: event.target.value })} /></label>
+          {!otpStage && <label>Password<span className="password-input-wrap"><input autoComplete={isRegister ? "new-password" : "current-password"} required type={showPassword ? "text" : "password"} minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span>{isRegister && <small>Use at least 12 characters. You’ll use this to sign in.</small>}</label>}
           {otpStage && <label>Six-digit code<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={otpCode} onChange={(event) => setOtpCode(event.target.value)} /><small>Enter the code from your email. It expires in 10 minutes.</small></label>}
           {isRegister && !otpStage && <label className="terms-acceptance"><input type="checkbox" required checked={values.termsAccepted} onChange={(event) => setValues({ ...values, termsAccepted: event.target.checked })} /><span>I agree to the <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Notice</a>. These are draft policies for the local development preview.</span></label>}
           {error && <div className="form-alert" role="alert">{error}</div>}
           <button className="button button-dark account-submit" type="submit" disabled={busy}>
             {busy ? <LoaderCircle className="spin" size={16} /> : null}
-            {busy ? "Please wait…" : otpStage ? "Verify code and continue" : isRegister ? "Send verification code" : "Send sign-in code"}
+            {busy ? "Please wait…" : otpStage ? "Verify email and create account" : isRegister ? "Send verification code" : "Sign in"}
             {!busy && <ChevronRight size={17} />}
           </button>
-          {otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => void resendOtp()}>Resend code</button>}
-          {otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => { setOtpStage(false); setAccountNotice(""); setError(""); }}>Use a different email</button>}
+          {isRegister && otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => void resendRegistrationCode()}>Resend verification code</button>}
+          {isRegister && otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => { setOtpStage(false); setAccountNotice(""); setError(""); }}>Change registration details</button>}
         </form>
         <p className="account-switch">{isRegister ? "Already have an account?" : "New to Printly?"} <a href={isRegister ? "/login" : "/register"}>{isRegister ? "Sign in" : "Create an account"}</a></p>
-        {!isRegister && <p className="account-switch"><a href="/forgot-password">Need to set or reset a password?</a></p>}
+        {!isRegister && <p className="account-switch"><a href="/forgot-password">Forgot your password?</a></p>}
         <div className="account-security"><ShieldCheck size={15} /> Your account is protected with a secure, private session.</div>
       </main>
       <p className="account-footer">Direct shop payments. Your customers’ files stay private.</p>
@@ -283,6 +289,28 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
 }
 
 export function ShopSettingsPage({ initialSection }: { initialSection?: string } = {}) {
+  const section = initialSection ?? ({
+    "/dashboard/setting/discount": "discounts",
+    "/dashboard/setting/payment": "payment-settings",
+    "/dashboard/setting/location": "location-lock",
+    "/dashboard/setting/order-form": "customer-details",
+    "/dashboard/setting/notifications": "notifications",
+    "/dashboard/settings/profile": "shop-profile",
+    "/dashboard/settings/security": "security-settings",
+    "/dashboard/settings/privacy": "privacy-settings",
+    "/dashboard/settings": "shop-profile",
+  }[window.location.pathname] ?? "print-options");
+  const sectionTitles: Record<string, [string, string]> = {
+    "print-options": ["Page setting", "Choose paper sizes and set print rates — customers see the exact price as soon as they upload."],
+    discounts: ["Discount setting", "Set discounts for larger print orders."],
+    "payment-settings": ["Payment setting", "Choose how customers pay for print orders."],
+    "location-lock": ["Location lock", "Limit orders to customers near your shop."],
+    "customer-details": ["Order form", "Choose what customer details you collect at order time."],
+    notifications: ["Notifications", "Choose the alerts you receive for shop activity."],
+    "shop-profile": ["Shop profile", "Shop details, logo and address."],
+    "security-settings": ["Account & security", "Manage your password and sign-in verification."],
+    "privacy-settings": ["Privacy", "Control customer information and uploaded-file retention."],
+  };
   const [user, setUser] = useState<User | null>(null);
   const [shop, setShop] = useState<ShopSettings>(createEmptyShop);
   const [loading, setLoading] = useState(true);
@@ -300,6 +328,8 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
   const [posterLanguage, setPosterLanguage] = useState<"en" | "hi">("en");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [visiblePasswords, setVisiblePasswords] = useState({ current: false, next: false, confirm: false });
   const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
@@ -309,7 +339,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
         setUser(account);
         const { shop: savedShop } = await requestJson<{ shop: ShopSettings }>("/api/shops/me");
         const rates = { ...createEmptyShop().rates, ...savedShop.rates };
-        setShop({ ...createEmptyShop(), ...savedShop, discountTiers: savedShop.discountTiers ?? [], rates });
+        setShop({ ...createEmptyShop(), ...savedShop, discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
       } catch (reason) {
         if (reason instanceof Error && reason.message.includes("Sign in")) {
           window.location.assign("/login");
@@ -323,14 +353,32 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
     void load();
   }, []);
 
-  useEffect(() => {
-    if (!loading && initialSection) window.setTimeout(() => document.getElementById(initialSection)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-  }, [initialSection, loading]);
-
   function updateShop<K extends keyof ShopSettings>(key: K, value: ShopSettings[K]) {
     setShop((current) => ({ ...current, [key]: value }));
     setNotice("");
     setQuote(null);
+  }
+
+  async function setLogoFromFile(file?: File) {
+    if (!file) return;
+    setError(""); setNotice("");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setError("Choose a PNG, JPG or WEBP logo up to 5 MB."); return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("This image could not be opened.")); image.src = objectUrl; });
+      const scale = Math.min(1, 600 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement("canvas"); canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d"); if (!context) throw new Error("Your browser could not resize the logo.");
+      context.fillStyle = "#ffffff"; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      let quality = 0.86; let dataUrl = canvas.toDataURL("image/jpeg", quality);
+      while (dataUrl.length > 650000 && quality > 0.45) { quality -= 0.1; dataUrl = canvas.toDataURL("image/jpeg", quality); }
+      if (dataUrl.length > 700000) throw new Error("This logo is too detailed to store. Choose a smaller image.");
+      updateShop("logoDataUrl", dataUrl);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not process the shop logo."); }
+    finally { URL.revokeObjectURL(objectUrl); }
   }
 
   function updateRate(size: string, key: keyof Rate, amount: string) {
@@ -361,6 +409,8 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
         method: "PUT",
         body: JSON.stringify({
           displayName: shop.displayName,
+          ownerName: shop.ownerName,
+          logoDataUrl: shop.logoDataUrl,
           mobile: shop.mobile,
           address: shop.address,
           city: shop.city,
@@ -377,10 +427,10 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
           bulkDiscountMinPages: Number(shop.bulkDiscountMinPages),
           bulkDiscountPercent: Number(shop.bulkDiscountPercent),
           discountTiers: shop.discountTiers,
+          discountGroups: shop.discountGroups,
           collectCustomerName: shop.collectCustomerName,
           collectCustomerMobile: shop.collectCustomerMobile,
           fileRetentionHours: Number(shop.fileRetentionHours),
-          autoApproveAfterPayment: shop.autoApproveAfterPayment,
           enabledPaperSizes: shop.enabledPaperSizes,
           colourEnabled: shop.colourEnabled,
           duplexEnabled: shop.duplexEnabled,
@@ -390,6 +440,8 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
         }),
       });
       setShop((current) => ({ ...current, ...savedShop }));
+      setUser((current) => current ? { ...current, ownerName: savedShop.ownerName } : current);
+      window.dispatchEvent(new CustomEvent("printly:profile-updated", { detail: { ownerName: savedShop.ownerName, displayName: savedShop.displayName } }));
       setNotice("Shop settings saved.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to save shop settings.");
@@ -424,31 +476,31 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
     }
   }
 
-  async function setTwoFactor(enabled: boolean) {
-    setError(""); setNotice("");
-    try {
-      await requestJson<{ enabled: boolean }>("/api/auth/two-factor", { method: "POST", body: JSON.stringify({ enabled }) });
-      setUser((current) => current ? { ...current, twoFactorEnabled: enabled } : current);
-      setNotice(enabled ? "Two-step verification enabled." : "Two-step verification disabled.");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not update sign-in security."); }
-  }
-
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setNotice(""); setChangingPassword(true);
     try {
+      if (newPassword !== confirmNewPassword) throw new Error("The new passwords do not match.");
       await requestJson("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
-      setCurrentPassword(""); setNewPassword(""); setNotice("Password changed.");
+      setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword(""); setNotice("Password changed.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not change password."); }
     finally { setChangingPassword(false); }
   }
 
-  function captureShopLocation() {
+  function captureShopLocation(enableLocationLock = false) {
     setError(""); setNotice("");
     if (!navigator.geolocation) { setError("This browser does not provide location access."); return; }
     navigator.geolocation.getCurrentPosition((position) => {
-      setShop((current) => ({ ...current, locationLatitude: position.coords.latitude, locationLongitude: position.coords.longitude }));
-      setNotice("Shop location captured. Save shop settings to apply it.");
+      setShop((current) => ({ ...current, locationLatitude: position.coords.latitude, locationLongitude: position.coords.longitude, ...(enableLocationLock ? { locationLockEnabled: true } : {}) }));
+      setNotice(enableLocationLock ? "Shop location captured. Save changes to enable location lock." : "Shop location captured. Save shop settings to apply it.");
     }, () => setError("Could not read the shop location. Allow location access and try again."), { enableHighAccuracy: true, timeout: 15000 });
+  }
+
+  function testVoice(message: string) {
+    if (!("speechSynthesis" in window)) { setError("Voice playback is not available in this browser."); return; }
+    window.speechSynthesis.cancel();
+    const announcement = new SpeechSynthesisUtterance(message);
+    announcement.lang = "en-IN";
+    window.speechSynthesis.speak(announcement);
   }
 
   function getCustomerUrl() {
@@ -572,15 +624,14 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
           <a className="sidebar-link" href="/dashboard/printers"><Printer size={17} /> Printers & routing</a>
           <a className="sidebar-link" href="/dashboard/qr-code"><QrCode size={17} /> My QR code</a>
           <a className="sidebar-link" href="/dashboard/subscription"><CreditCard size={17} /> Subscription</a>
-          <a className="sidebar-link" href="/dashboard/withdraw"><CreditCard size={17} /> Wallet & earnings</a>
           <a className="sidebar-link" href="/dashboard/support"><CircleHelp size={17} /> Help & support</a>
           <div className="sidebar-help"><CircleHelp size={17} /><b>Need a hand?</b><p>Set your print options and rates here, then share your customer page link.</p></div>
         </aside>
 
-        <main className="settings-main">
-          <div className="settings-breadcrumb"><span>Shop management</span><ChevronRight size={13} /><b>Shop settings</b></div>
+        <main className={`settings-main settings-single-page settings-section-${section}`} data-settings-section={section}>
+          <div className="settings-breadcrumb"><span>Shop</span><ChevronRight size={13} /><b>{sectionTitles[section]?.[0] ?? "Settings"}</b></div>
           <div className="settings-title-row">
-            <div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR COUNTER, ONLINE</div><h1>Shop settings</h1><p>Set up the details and print rates your customers will see.</p></div>
+            <div><h1>{sectionTitles[section]?.[0] ?? "Settings"}</h1><p>{sectionTitles[section]?.[1] ?? "Manage your shop preferences."}</p></div>
             {shop.slug && <div className="shop-link-chip"><span className="online-dot" /> Your shop link <b>/p/{shop.slug}</b></div>}
           </div>
 
@@ -592,17 +643,24 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
           {error && <div className="form-alert settings-alert" role="alert">{error}</div>}
           {notice && <div className="success-alert" role="status"><Check size={16} />{notice}</div>}
 
-          <section className="settings-card" id="security-settings"><div className="settings-card-heading"><span className="settings-icon"><ShieldCheck size={18} /></span><div><h2>Sign-in security</h2><p>Change your password and manage two-step verification.</p></div></div><form className="settings-fields two-col" onSubmit={(event) => void changePassword(event)}><label>Current password<input required type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)}/></label><label>New password<input required type="password" minLength={12} maxLength={128} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)}/><small>Use at least 12 characters.</small></label><button className="button button-dark" type="submit" disabled={changingPassword}>{changingPassword ? "Changing…" : "Change password"}</button></form><label className="toggle-row"><span><b>Two-step email verification</b><small>Ask for a one-time code after the password. Email delivery must be configured.</small></span><input type="checkbox" checked={Boolean(user?.twoFactorEnabled)} onChange={(event) => void setTwoFactor(event.target.checked)} /><i /></label></section>
+          <div id="security-settings" className="security-settings-page">
+            <section className="settings-card"><div className="settings-card-heading"><div><h2>Change password</h2><p>Use at least 12 characters.</p></div></div><form className="password-change-form" onSubmit={(event) => void changePassword(event)}>
+              {([ ["current", "Current password", currentPassword, setCurrentPassword, "current-password"], ["next", "New password", newPassword, setNewPassword, "new-password"], ["confirm", "Confirm new password", confirmNewPassword, setConfirmNewPassword, "new-password"] ] as const).map(([key, label, value, setter, autoComplete]) => <label className="password-setting-field" key={key}>{label}<span className="password-input-wrap"><input required type={visiblePasswords[key] ? "text" : "password"} minLength={key === "current" ? undefined : 12} maxLength={128} autoComplete={autoComplete} value={value} onChange={(event) => setter(event.target.value)}/><button type="button" aria-label={`${visiblePasswords[key] ? "Hide" : "Show"} ${label.toLowerCase()}`} onClick={() => setVisiblePasswords((current) => ({ ...current, [key]: !current[key] }))}>{visiblePasswords[key] ? <EyeOff size={16}/> : <Eye size={16}/>}</button></span></label>)}
+              <div className="security-save-row"><span>At least 12 characters recommended.</span><button className="button button-dark" type="submit" disabled={changingPassword}>{changingPassword ? <LoaderCircle className="spin" size={15}/> : <ShieldCheck size={15}/>}Update password</button></div>
+            </form></section>
+          </div>
 
           <form onSubmit={saveSettings}>
             <section className="settings-card" id="shop-profile">
-              <div className="settings-card-heading"><span className="settings-icon"><Store size={18} /></span><div><h2>Shop profile</h2><p>Basic details for your shop and customer page.</p></div><span className="step-badge">01</span></div>
+              <div className="settings-card-heading"><div><h2>Shop details</h2><p>Shown on the customer upload page and invoices.</p></div></div>
+              <div className="shop-logo-editor"><span className="shop-logo-preview">{shop.logoDataUrl ? <img src={shop.logoDataUrl} alt="Shop logo preview"/> : shop.displayName.slice(0, 2).toUpperCase() || "SC"}</span><div><b>Shop logo</b><p>PNG or JPG, square, max 5 MB — compressed automatically. Your initials show if there’s no logo.</p><label className="qr-secondary-button shop-logo-upload"><Download size={13}/> Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { void setLogoFromFile(event.target.files?.[0]); event.target.value = ""; }}/></label>{shop.logoDataUrl && <button type="button" className="shop-logo-remove" onClick={() => updateShop("logoDataUrl", "")}>Remove logo</button>}</div></div>
               <div className="settings-fields two-col">
-                <label>Shop display name<input required minLength={2} maxLength={100} value={shop.displayName} onChange={(event) => updateShop("displayName", event.target.value)} /></label>
-                <label>Contact mobile<input required type="tel" value={shop.mobile} onChange={(event) => updateShop("mobile", event.target.value)} /></label>
+                <label>Shop display name<input required={section === "shop-profile"} minLength={2} maxLength={100} value={shop.displayName} onChange={(event) => updateShop("displayName", event.target.value)} /></label>
+                <label>Owner name<input required={section === "shop-profile"} minLength={2} maxLength={100} value={shop.ownerName} onChange={(event) => updateShop("ownerName", event.target.value)} /></label>
+                <label>Contact mobile<input required={section === "shop-profile"} type="tel" value={shop.mobile} onChange={(event) => updateShop("mobile", event.target.value)} /></label>
                 <label className="field-full">Shop address <span className="optional-label">Optional</span><div className="input-with-icon"><MapPin size={15} /><input maxLength={300} value={shop.address} onChange={(event) => updateShop("address", event.target.value)} /></div></label>
                 <label>City<input maxLength={100} value={shop.city} onChange={(event) => updateShop("city", event.target.value)} /></label>
-                <label>State<input maxLength={100} value={shop.state} onChange={(event) => updateShop("state", event.target.value)} /></label>
+                <label>State<select value={shop.state} onChange={(event) => updateShop("state", event.target.value)}><option value="">Select state</option>{indianStates.map((state) => <option key={state}>{state}</option>)}</select></label>
                 <label>PIN code<input inputMode="numeric" maxLength={12} value={shop.pincode} onChange={(event) => updateShop("pincode", event.target.value)} /></label>
                 <label>GSTIN <span className="optional-label">Optional</span><input maxLength={15} value={shop.gstin} onChange={(event) => updateShop("gstin", event.target.value.toUpperCase())} /></label>
                 <label>Account email<input disabled value={shop.email} /></label>
@@ -610,7 +668,10 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
               </div>
             </section>
 
-          <section className="settings-card" id="notifications"><div className="settings-card-heading"><span className="settings-icon"><ShieldCheck size={18}/></span><div><h2>Notifications</h2><p>Choose the alerts shown on the shop dashboard. Browser alerts require permission in each browser. Daily emails are sent at 9 pm India time when SMTP is configured.</p></div></div><div className="toggle-grid">{([ ["newOrder", "New order alert", "Show a dashboard notice and browser alert for new jobs."], ["printFailed", "Print failed alert", "Show a dashboard notice when a job reports a print issue."], ["uploadSound", "Customer upload alert", "Use a short sound for new uploaded jobs."], ["dailyEmail", "Daily summary email", "Email today's order count, source pages, and confirmed receipts."] ] as const).map(([key, label, helper]) => <label className="toggle-row" key={key}><span><b>{label}</b><small>{helper}</small></span><input type="checkbox" checked={shop.notificationPreferences[key]} onChange={(event) => updateShop("notificationPreferences", { ...shop.notificationPreferences, [key]: event.target.checked })}/><i/></label>)}</div><button type="button" className="qr-secondary-button" onClick={() => { try { const AudioContextClass = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext; if (AudioContextClass) { const audio = new AudioContextClass(); const oscillator = audio.createOscillator(); oscillator.connect(audio.destination); oscillator.frequency.value = 660; oscillator.onended = () => { void audio.close(); }; oscillator.start(); oscillator.stop(audio.currentTime + .18); } } catch { setError("Your browser could not play the test sound."); } }}>Test sound</button></section>
+          <section className="settings-card notifications-settings-card" id="notifications"><div className="settings-card-heading"><span className="settings-icon"><ShieldCheck size={18}/></span><div><h2>Notification preferences</h2><p>Choose which alerts you want.</p></div></div><div className="notification-option-list">
+            {([ ["newOrder", "New order alert", "When a customer places an order — on every dashboard page, even with the window minimised.", "New order received."], ["printFailed", "Print failed alert", "A red message and a voice when a print fails (paper jam, out of paper, printer offline…).", "Print failed. Please check the printer."], ["customerUploadVoice", "Customer upload voice", "A voice on the customer’s phone after they upload files and place the order.", "Your order has been placed successfully."] ] as const).map(([key, label, helper, phrase]) => <article className="notification-option" key={key}><label className="toggle-row"><span><b>{label}</b><small>{helper}</small></span><input type="checkbox" checked={shop.notificationPreferences[key]} onChange={(event) => updateShop("notificationPreferences", { ...shop.notificationPreferences, [key]: event.target.checked })}/><i/></label><div className="notification-voice-row"><span>Voice says: <b>“{phrase}”</b></span><button type="button" className="qr-secondary-button" onClick={() => testVoice(phrase)}><ShieldCheck size={13}/> Test sound</button></div></article>)}
+            <article className="notification-option"><label className="toggle-row"><span><b>Daily summary email</b><small>A summary of orders, pages and earnings every night at 9 pm.</small></span><input type="checkbox" checked={shop.notificationPreferences.dailyEmail} onChange={(event) => updateShop("notificationPreferences", { ...shop.notificationPreferences, dailyEmail: event.target.checked })}/><i/></label></article>
+          </div></section>
 
             <section className="settings-card shop-qr-card" id="shop-qr-code">
               <div className="settings-card-heading"><span className="settings-icon"><QrCode size={18} /></span><div><h2>Customer QR & sharing</h2><p>Print this code or share your shop link so customers can start an order.</p></div><span className="step-badge">SHARE</span></div>
@@ -636,53 +697,50 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
 
             <section className="settings-card" id="print-options">
               <div className="settings-card-heading"><span className="settings-icon"><Printer size={18} /></span><div><h2>Print options & rates</h2><p>Choose what you offer and set prices in rupees.</p></div><span className="step-badge">02</span></div>
-              <div className="option-block">
-                <div className="option-label"><b>Paper sizes</b><small>Select at least one size.</small></div>
-                <div className="choice-row">{sizes.map((size) => <label className={`choice-chip${shop.enabledPaperSizes.includes(size) ? " selected" : ""}`} key={size}><input type="checkbox" checked={shop.enabledPaperSizes.includes(size)} onChange={() => togglePaperSize(size)} /><span>{shop.enabledPaperSizes.includes(size) && <Check size={13} />}{size}</span></label>)}</div>
-              </div>
-              <div className="option-block">
-                <div className="option-label"><b>Print capabilities</b><small>Only enabled options appear for customers.</small></div>
-                <div className="toggle-grid">
-                  <label className="toggle-row"><span><b>Colour printing</b><small>Offer black-and-white and colour.</small></span><input type="checkbox" checked={shop.colourEnabled} onChange={(event) => updateShop("colourEnabled", event.target.checked)} /><i /></label>
-                  <label className="toggle-row"><span><b>Double-sided printing</b><small>Charge duplex by physical sheet.</small></span><input type="checkbox" checked={shop.duplexEnabled} onChange={(event) => updateShop("duplexEnabled", event.target.checked)} /><i /></label>
-                </div>
-              </div>
-              <div className="rate-table-wrap">
-                <div className="rate-table-heading"><b>Rates by paper size</b><span>Enter amounts in ₹. For duplex, an odd final page uses one full sheet.</span></div>
-                <div className="rate-table">
-                  <div className="rate-header"><span>Paper</span>{rateFields.map((field) => <span key={field.key}>{field.label}<small>{field.helper}</small></span>)}</div>
-                  {sizes.map((size) => <div className={`rate-row${shop.enabledPaperSizes.includes(size) ? "" : " rate-row-disabled"}`} key={size}>
-                    <b>{size}{!shop.enabledPaperSizes.includes(size) && <small>Disabled</small>}</b>
-                    {rateFields.map((field) => {
-                      const hidden = (field.key === "colourSimplexPaise" || field.key === "colourDuplexSheetPaise") && !shop.colourEnabled;
-                      const hiddenDuplex = (field.key === "blackWhiteDuplexSheetPaise" || field.key === "colourDuplexSheetPaise") && !shop.duplexEnabled;
-                      const disabled = !shop.enabledPaperSizes.includes(size) || hidden || hiddenDuplex;
-                      const value = (shop.rates[size]?.[field.key] ?? 0) / 100;
-                      return <label className="rate-input" key={field.key}><span className="currency-prefix">₹</span><input aria-label={`${size} ${field.label} rate`} type="number" min="0" max="1000000" step="0.01" value={value || ""} placeholder="0.00" disabled={disabled} onChange={(event) => updateRate(size, field.key, event.target.value)} /></label>;
-                    })}
-                  </div>)}
-                </div>
+              <div className="page-rate-grid">
+                {sizes.map((size) => {
+                  const enabled = shop.enabledPaperSizes.includes(size);
+                  const rateInput = (key: keyof Rate, label: string, unit: string) => <label className="page-rate-input" key={key}><span>{label}<small>{unit}</small></span><span className="page-rate-currency">₹<input aria-label={`${size} ${label} rate`} type="number" min="0" max="1000000" step="0.01" value={(shop.rates[size]?.[key] ?? 0) / 100 || ""} placeholder="0" disabled={!enabled || ((key === "colourSimplexPaise" || key === "colourDuplexSheetPaise") && !shop.colourEnabled) || ((key === "blackWhiteDuplexSheetPaise" || key === "colourDuplexSheetPaise") && !shop.duplexEnabled)} onChange={(event) => updateRate(size, key, event.target.value)} /></span></label>;
+                  return <article className={`page-rate-card${enabled ? "" : " is-disabled"}`} key={size}>
+                    <header><label className="page-paper-toggle"><input type="checkbox" checked={enabled} onChange={() => togglePaperSize(size)}/><i/><span><b>{size}</b><small>{size === "A4" ? "210 × 297 mm" : size === "Legal" ? "216 × 356 mm" : size === "A3" ? "297 × 420 mm" : "148 × 210 mm"}</small></span></label></header>
+                    <label className="page-capability-toggle"><span><b>Colour printing</b><small>Customers can choose B&W or colour</small></span><input type="checkbox" checked={shop.colourEnabled} onChange={(event) => updateShop("colourEnabled", event.target.checked)}/><i/></label>
+                    <div className="page-rate-subhead"><b>ONE SIDE</b><small>per page</small></div>
+                    {rateInput("blackWhiteSimplexPaise", "Black & White", "per page")}
+                    {shop.colourEnabled && rateInput("colourSimplexPaise", "Colour", "per page")}
+                    <label className="page-capability-toggle duplex"><span><b>Both sides printing</b><small>per sheet · 2 pages</small></span><input type="checkbox" checked={shop.duplexEnabled} onChange={(event) => updateShop("duplexEnabled", event.target.checked)}/><i/></label>
+                    {shop.duplexEnabled && <>{rateInput("blackWhiteDuplexSheetPaise", "Black & White", "per sheet")}{shop.colourEnabled && rateInput("colourDuplexSheetPaise", "Colour", "per sheet")}</>}
+                  </article>;
+                })}
               </div>
               <label className="copies-setting">Maximum copies per order<input type="number" min="1" max="100" value={shop.maxCopies} onChange={(event) => updateShop("maxCopies", Number(event.target.value))} /><small>Customers can choose from 1 to this number of copies.</small></label>
-            <div className="option-block" id="discounts"><div className="option-label"><b>Bulk discount</b><small>Tier discounts use printed pages × copies. The highest matching percentage applies.</small></div>{shop.discountTiers.map((tier, index) => <div className="settings-fields two-col discount-tier" key={index}><label>Minimum units<input type="number" min="1" value={tier.minUnits} onChange={(event) => updateShop("discountTiers", shop.discountTiers.map((item, i) => i === index ? { ...item, minUnits: Number(event.target.value) } : item))} /></label><label>Maximum units<input type="number" min="1" value={tier.maxUnits} onChange={(event) => updateShop("discountTiers", shop.discountTiers.map((item, i) => i === index ? { ...item, maxUnits: Number(event.target.value) } : item))} /></label><label>Discount percent<input type="number" min="0" max="90" step="0.5" value={tier.percent} onChange={(event) => updateShop("discountTiers", shop.discountTiers.map((item, i) => i === index ? { ...item, percent: Number(event.target.value) } : item))} /></label><button type="button" className="qr-secondary-button" onClick={() => updateShop("discountTiers", shop.discountTiers.filter((_, i) => i !== index))}>Remove range</button></div>)}<button type="button" className="qr-secondary-button" disabled={shop.discountTiers.length >= 20} onClick={() => updateShop("discountTiers", [...shop.discountTiers, { minUnits: 50, maxUnits: 100, percent: 5 }])}>Add discount range</button><p>Legacy single-range discount (optional)</p><div className="settings-fields two-col"><label>Minimum units<input type="number" min="0" max="100000" value={shop.bulkDiscountMinPages} onChange={(event) => updateShop("bulkDiscountMinPages", Number(event.target.value))} /></label><label>Discount percent<input type="number" min="0" max="90" step="0.5" value={shop.bulkDiscountPercent} onChange={(event) => updateShop("bulkDiscountPercent", Number(event.target.value))} /></label></div></div>
+            <div className="discount-settings-panel" id="discounts">
+              <header className="discount-settings-heading"><div><h2>Bulk discounts</h2><p>Pages × copies decide the range · the biggest matching discount is applied automatically</p></div><button type="button" className="qr-secondary-button" disabled={shop.discountGroups.length >= 20} onClick={() => updateShop("discountGroups", [...shop.discountGroups, { paperSize: "all", ranges: [{ minPages: 10, maxPages: null, percent: 5 }] }])}>＋ Add paper size</button></header>
+              {shop.discountGroups.length === 0 ? <div className="discount-empty"><p>No discounts yet.</p><button type="button" className="button button-primary" onClick={() => updateShop("discountGroups", [{ paperSize: "all", ranges: [{ minPages: 10, maxPages: null, percent: 5 }] }])}>＋ Add paper size</button></div> : <div className="discount-group-list">{shop.discountGroups.map((group, groupIndex) => <article className="discount-group" key={`${group.paperSize}-${groupIndex}`}><div className="discount-group-head"><label>Paper size<select aria-label="Paper size" value={group.paperSize} onChange={(event) => updateShop("discountGroups", shop.discountGroups.map((item, index) => index === groupIndex ? { ...item, paperSize: event.target.value as typeof item.paperSize } : item))}><option value="all">All paper sizes</option>{sizes.filter((size) => shop.enabledPaperSizes.includes(size) || size === group.paperSize).map((size) => <option value={size} key={size}>{size}</option>)}</select></label><button type="button" className="discount-remove-group" onClick={() => updateShop("discountGroups", shop.discountGroups.filter((_, index) => index !== groupIndex))}>Remove group</button></div>
+                {group.ranges.map((range, rangeIndex) => <div className="discount-range" key={rangeIndex}><label>Min. pages<input type="number" min="1" max="1000000" value={range.minPages || ""} onChange={(event) => updateShop("discountGroups", shop.discountGroups.map((item, index) => index === groupIndex ? { ...item, ranges: item.ranges.map((entry, at) => at === rangeIndex ? { ...entry, minPages: Number(event.target.value) } : entry) } : item))}/></label><span className="discount-range-to">to</span><label>Max. pages<input type="number" min={range.minPages} max="1000000" placeholder="No limit" value={range.maxPages ?? ""} onChange={(event) => updateShop("discountGroups", shop.discountGroups.map((item, index) => index === groupIndex ? { ...item, ranges: item.ranges.map((entry, at) => at === rangeIndex ? { ...entry, maxPages: event.target.value === "" ? null : Number(event.target.value) } : entry) } : item))}/></label><span className="discount-range-arrow">→</span><label>Discount %<input type="number" min="0" max="90" step="0.5" value={range.percent} onChange={(event) => updateShop("discountGroups", shop.discountGroups.map((item, index) => index === groupIndex ? { ...item, ranges: item.ranges.map((entry, at) => at === rangeIndex ? { ...entry, percent: Number(event.target.value) } : entry) } : item))}/></label><span className="discount-result">{range.minPages || 0}+ pages → {range.percent}% off</span><button type="button" className="discount-remove-range" aria-label={`Remove ${range.minPages}+ pages on ${group.paperSize}`} onClick={() => updateShop("discountGroups", shop.discountGroups.map((item, index) => index === groupIndex ? { ...item, ranges: item.ranges.filter((_, at) => at !== rangeIndex) } : item))}>×</button></div>)}
+                <button type="button" className="discount-add-range" onClick={() => updateShop("discountGroups", shop.discountGroups.map((item, index) => index === groupIndex ? { ...item, ranges: [...item.ranges, { minPages: 50, maxPages: null, percent: 5 }] } : item))}>＋ Add range</button>
+              </article>)}</div>}
+              <p className="discount-help-note">Leave Max. pages empty for no upper limit (for example, 51 to no limit → 5%).</p>
+            </div>
             </section>
 
             <section className="settings-card" id="customer-details">
               <div className="settings-card-heading"><span className="settings-icon"><Store size={18} /></span><div><h2>Customer details</h2><p>Ask for contact details when customers place an order.</p></div></div>
               <div className="toggle-grid"><label className="toggle-row"><span><b>Collect customer name</b><small>Add a name field to the order form.</small></span><input type="checkbox" checked={shop.collectCustomerName} onChange={(event) => updateShop("collectCustomerName", event.target.checked)} /><i /></label><label className="toggle-row"><span><b>Collect customer mobile</b><small>Add a phone field to the order form.</small></span><input type="checkbox" checked={shop.collectCustomerMobile} onChange={(event) => updateShop("collectCustomerMobile", event.target.checked)} /><i /></label></div>
-              <label className="copies-setting" id="privacy-settings">Pending-file retention (hours)<input type="number" min="1" max="720" value={shop.fileRetentionHours} onChange={(event) => updateShop("fileRetentionHours", Number(event.target.value))} /><small>1 to 720 hours. Active jobs keep their files; files become cleanup-eligible when an order is completed or cancelled.</small></label>
-              <div className="settings-card-heading" id="location-lock"><span className="settings-icon"><MapPin size={18}/></span><div><h2>Shop location lock</h2><p>Optionally limit new orders to customers physically near your shop. Location access is requested only when an order is placed.</p></div></div>
-              <label className="toggle-row"><span><b>Only allow nearby orders</b><small>{shop.locationLatitude !== undefined && shop.locationLongitude !== undefined ? `Shop location saved · ${shop.locationRadiusMeters} m radius` : "Set the shop location before enabling this."}</small></span><input type="checkbox" checked={shop.locationLockEnabled} disabled={shop.locationLatitude === undefined || shop.locationLongitude === undefined} onChange={(event) => updateShop("locationLockEnabled", event.target.checked)} /><i /></label>
-              <div className="settings-fields two-col"><label>Allowed radius (metres)<input type="number" min="50" max="5000" step="50" value={shop.locationRadiusMeters} onChange={(event) => updateShop("locationRadiusMeters", Number(event.target.value))}/></label><button type="button" className="qr-secondary-button" onClick={captureShopLocation}>Use this device to set shop location</button></div>
+              <div id="privacy-settings">
+                <div className="settings-card-heading"><div><h2>File privacy</h2><p>Customer document safety comes first.</p></div></div>
+                <label className="toggle-row"><span><b>Auto-delete files after print</b><small>As soon as a file prints, it is permanently deleted from the shop computer and server.</small></span><input type="checkbox" checked disabled readOnly/><i/></label>
+                <div className="privacy-guarantee"><ShieldCheck size={15}/> This setting is always on to protect customer privacy and cannot be turned off.</div>
+                <label className="privacy-retention">Delete unprinted files after<select value={shop.fileRetentionHours} onChange={(event) => updateShop("fileRetentionHours", Number(event.target.value))}><option value={0.25}>15 minutes</option><option value={1}>1 hour</option><option value={24}>24 hours</option></select><small>Files from orders that weren’t paid or printed are deleted after this time.</small></label>
+              </div>
+              <div id="location-lock"><div className="settings-card-heading"><span className="settings-icon"><MapPin size={18}/></span><div><h2>Location lock</h2><p>Only customers who are at your shop can scan the QR code and place an order.</p></div></div><label className="location-lock-option"><span><b>Only allow orders at the shop</b><small>When a customer scans your QR code, their phone’s location is checked. Inside the shop radius they can order; outside they see a message.</small></span><input aria-label="Only allow orders at the shop" type="checkbox" checked={shop.locationLockEnabled} onChange={(event) => { if (!event.target.checked) updateShop("locationLockEnabled", false); else if (shop.locationLatitude !== undefined && shop.locationLongitude !== undefined) updateShop("locationLockEnabled", true); else captureShopLocation(true); }}/><i/></label></div>
             </section>
 
             <section className="settings-card" id="payment-settings">
-              <div className="settings-card-heading"><span className="settings-icon"><CreditCard size={18} /></span><div><h2>How customers pay</h2><p>Payments go to you directly. The app does not collect or verify UPI payments automatically.</p></div><span className="step-badge">03</span></div>
+              <div className="settings-card-heading"><span className="settings-icon"><CreditCard size={18} /></span><div><h2>Payment setting</h2><p>Choose which payment methods customers see on your order page.</p></div><span className="step-badge">03</span></div>
               <div className="payment-settings">
-                <label className="upi-field" htmlFor="upiId">Shop UPI ID <span className="optional-label">Optional</span><input id="upiId" autoComplete="off" placeholder="yourshop@bank" value={shop.upiId} onChange={(event) => updateShop("upiId", event.target.value)} /><small>Leave blank to turn off UPI. We never ask for your UPI PIN or bank password.</small></label>
-                <label className="toggle-row payment-toggle"><span><b>Cash at counter</b><small>Orders wait for you to collect cash and confirm it.</small></span><input type="checkbox" checked={shop.cashEnabled} onChange={(event) => updateShop("cashEnabled", event.target.checked)} /><i /></label>
-                <label className="toggle-row payment-toggle"><span><b>Auto-approve after payment confirmation</b><small>After you manually confirm UPI or cash, move the order directly to the print queue.</small></span><input type="checkbox" checked={shop.autoApproveAfterPayment} onChange={(event) => updateShop("autoApproveAfterPayment", event.target.checked)} /><i /></label>
-                <div className="payment-note"><ShieldCheck size={16} /> No payment gateway, platform wallet, or commission is used.</div>
+                <article className={`shop-payment-method${shop.upiId ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol upi">▦</span><div><b>UPI payment</b><small>Customer pays directly to your UPI account</small></div><span className={`shop-payment-state${shop.upiId ? " ready" : ""}`}>{shop.upiId ? "Enabled" : "Not set up"}</span></div><label className="upi-field" htmlFor="upiId">Shop UPI ID<input id="upiId" autoComplete="off" placeholder="yourshop@bank" value={shop.upiId} onChange={(event) => updateShop("upiId", event.target.value)} /><small>Enter your UPI ID to show the UPI option. Payments go directly to you; verify them in your payment app.</small></label></article>
+                <article className={`shop-payment-method${shop.cashEnabled ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol cash">⌂</span><div><b>Cash at counter</b><small>Customer pays when they collect the print</small></div><label className="toggle-switch-control"><input type="checkbox" checked={shop.cashEnabled} onChange={(event) => updateShop("cashEnabled", event.target.checked)} /><i/></label></div>{shop.cashEnabled && <p className="shop-payment-help">Orders stay marked as unpaid until you collect cash and confirm the payment.</p>}</article>
+                <div className="payment-note"><ShieldCheck size={16} /> UPI and cash payments go directly to your shop. Printly does not process customer payments or take a commission.</div>
               </div>
             </section>
 
@@ -704,7 +762,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
 
             <div className="settings-save-row">
               <span><ShieldCheck size={15} /> Settings are private to your shop account.</span>
-              <button className="button button-dark save-button" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}{saving ? "Saving…" : "Save shop settings"}</button>
+              <button className="button button-dark save-button" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}{saving ? "Saving…" : section === "shop-profile" ? "Save profile" : section === "notifications" ? "Save preferences" : section === "privacy-settings" ? "Save privacy settings" : "Save changes"}</button>
             </div>
           </form>
         </main>

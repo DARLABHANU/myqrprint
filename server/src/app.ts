@@ -10,7 +10,6 @@ import { merchantOrdersRouter } from "./routes/merchantOrders.js";
 import { publicShopsRouter } from "./routes/publicShops.js";
 import { shopsRouter } from "./routes/shops.js";
 import { printersRouter } from "./routes/printers.js";
-import { subscriptionsRouter } from "./routes/subscriptions.js";
 
 export const app = express();
 app.set("trust proxy", 1);
@@ -80,8 +79,6 @@ app.use("/api/shops", printersRouter);
 app.use("/api/shops", merchantOrdersRouter);
 app.use("/api/agent", agentRouter);
 app.use("/api/public/shops", publicShopsRouter);
-app.use("/api", subscriptionsRouter);
-
 app.get("/api/health", (_request, response) => {
   const database = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
   const status = database === "connected" ? 200 : 503;

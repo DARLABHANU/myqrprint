@@ -119,6 +119,7 @@ function publicShop(shop: InstanceType<typeof Shop> | null) {
   return {
     slug: record.slug,
     displayName: record.displayName,
+    logoDataUrl: record.logoDataUrl ?? "",
     address: [record.address, record.city, record.state, record.pincode].filter(Boolean).join(", "),
     upiId: record.upiId,
     cashEnabled: record.cashEnabled,
@@ -128,15 +129,12 @@ function publicShop(shop: InstanceType<typeof Shop> | null) {
     maxCopies: record.maxCopies,
     collectCustomerName: record.collectCustomerName,
     collectCustomerMobile: record.collectCustomerMobile,
+    customerUploadVoice: record.notificationPreferences?.customerUploadVoice ?? true,
     fileRetentionHours: record.fileRetentionHours,
     locationLockEnabled: record.locationLockEnabled,
     locationRadiusMeters: record.locationRadiusMeters,
     rates: record.rates,
   };
-}
-
-function subscriptionAllowsOrders(shop: InstanceType<typeof Shop>): boolean {
-  return shop.subscriptionExpiresAt > new Date() && shop.subscriptionOrdersUsed < shop.subscriptionOrderLimit;
 }
 
 function ensureCustomerSession(request: Request): Promise<void> {
@@ -283,7 +281,6 @@ publicShopsRouter.get("/:slug", async (request, response, next) => {
       response.status(404).json({ error: "This shop is currently unavailable." });
       return;
     }
-    if (!subscriptionAllowsOrders(shop)) { response.status(404).json({ error: "This shop is currently unavailable." }); return; }
     response.json({ shop: publicShop(shop) });
   } catch (error) {
     next(error);
@@ -311,7 +308,6 @@ publicShopsRouter.post("/:slug/uploads", uploadLimiter, uploadMiddleware, async 
       response.status(404).json({ error: "This shop is currently unavailable." });
       return;
     }
-    if (!subscriptionAllowsOrders(shop)) { await cleanupPaths(paths); response.status(404).json({ error: "This shop is currently unavailable." }); return; }
     const existingCount = await CustomerUpload.countDocuments({
       shopId: shop._id,
       sessionId: request.sessionID,
@@ -441,7 +437,6 @@ publicShopsRouter.post("/:slug/quote", async (request, response, next) => {
       response.status(404).json({ error: "This shop is currently unavailable." });
       return;
     }
-    if (!subscriptionAllowsOrders(shop)) { response.status(404).json({ error: "This shop is currently unavailable." }); return; }
     const uploads = await findSessionUploads(request, shop._id, parsed.data.uploadIds);
     const quote = calculateCustomerQuote(shop, uploads, parsed.data.options);
     response.json({ quote: { ...quote, amount: (quote.amountPaise / 100).toFixed(2) } });
@@ -472,7 +467,6 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       response.status(404).json({ error: "This shop is currently unavailable." });
       return;
     }
-    if (!subscriptionAllowsOrders(shop)) { response.status(404).json({ error: "This shop is currently unavailable." }); return; }
     orderShopId = shop._id;
     if (parsed.data.customerName && !shop.collectCustomerName) {
       response.status(400).json({ error: "This shop does not collect customer names." });
@@ -571,18 +565,6 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       await order.deleteOne();
       createdOrderId = undefined;
       response.status(409).json({ error: "An upload was already used. Please refresh and check your order." });
-      return;
-    }
-
-    const quotaUpdate = await Shop.updateOne(
-      { _id: shop._id, subscriptionExpiresAt: { $gt: now }, $expr: { $lt: ["$subscriptionOrdersUsed", "$subscriptionOrderLimit"] } },
-      { $inc: { subscriptionOrdersUsed: 1 } },
-    );
-    if (quotaUpdate.modifiedCount !== 1) {
-      await CustomerUpload.updateMany({ orderId: order._id }, { $set: { state: "temporary" }, $unset: { orderId: 1 } });
-      await order.deleteOne();
-      createdOrderId = undefined;
-      response.status(409).json({ error: "This shop has reached its plan limit. Please contact the shopkeeper." });
       return;
     }
 

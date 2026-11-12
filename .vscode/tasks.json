@@ -27,6 +27,109 @@
 			],
 			"isBackground": true,
 			"problemMatcher": []
+		},
+		{
+			"label": "Repo typecheck",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"typecheck"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			]
+		},
+		{
+			"label": "Validate public page changes",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"npm run typecheck -w client && npm run build -w client"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			]
+		},
+		{
+			"label": "Run Printly API locally",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"dev",
+				"-w",
+				"server"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check local MongoDB install",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"-e",
+				"const fs=require('fs'); const path=require('path'); const roots=['C:/Program Files/MongoDB/Server','C:/Program Files/MongoDB/Compass','C:/Program Files (x86)/MongoDB','C:/Users/daarl/AppData/Local/Programs/MongoDB Compass','C:/ProgramData/chocolatey/bin']; for(const r of roots) console.log(r,fs.existsSync(r)?fs.readdirSync(r).join(', '):'not found'); console.log('PATH matches', (process.env.PATH||'').split(path.delimiter).filter(x=>/mongo/i.test(x)).join('; ')||'none'); const net=require('net'); const s=net.connect(27017,'127.0.0.1'); s.setTimeout(800); s.on('connect',()=>{console.log('27017 open');s.destroy()}); s.on('error',e=>console.log('27017 unavailable:',e.code)); s.on('timeout',()=>{console.log('27017 timed out');s.destroy()});"
+			]
+		},
+		{
+			"label": "Inspect local MongoDB availability",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"-e",
+				"console.log('dirs'); for(const p of ['C:/Program Files/MongoDB/Server','C:/Program Files/MongoDB/Compass','C:/Program Files (x86)/MongoDB','C:/Users/daarl/AppData/Local/Programs/MongoDB Compass','C:/ProgramData/chocolatey/bin']) { try { console.log(p, require('fs').existsSync(p) ? require('fs').readdirSync(p).join(',') : 'missing'); } catch(e) { console.log(p, 'error'); } } console.log('path', (process.env.PATH || '').split(';').filter(p=>p.toLowerCase().includes('mongo')).join('|') || 'no mongo path'); const net=require('net'), s=net.connect(27017,'127.0.0.1'); s.setTimeout(800); s.on('connect',()=>{console.log('port27017=open');s.destroy()}); s.on('error',e=>console.log('port27017='+e.code)); s.on('timeout',()=>{console.log('port27017=timeout');s.destroy()});"
+			]
+		},
+		{
+			"label": "Check MongoDB service",
+			"type": "shell",
+			"command": "Get-Service",
+			"args": [
+				"-Name",
+				"*Mongo*"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Run Printly API with local MongoDB",
+			"type": "shell",
+			"command": "$env:MONGODB_URI='mongodb://127.0.0.1:27017/printly'; npm run dev -w server",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify local MongoDB connection",
+			"type": "shell",
+			"command": "& 'C:\\Users\\daarl\\AppData\\Local\\Programs\\mongosh\\mongosh.exe' 'mongodb://127.0.0.1:27017/printly' --quiet --eval 'JSON.stringify({ database: db.getName(), ping: db.adminCommand({ ping: 1 }).ok })'",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Create local test account",
+			"type": "shell",
+			"command": "$env:MONGODB_URI='mongodb://127.0.0.1:27017/printly'; node --import tsx --input-type=module -e 'import mongoose from \"mongoose\"; import bcrypt from \"bcryptjs\"; import { User } from \"./server/src/models/User.ts\"; import { Shop } from \"./server/src/models/Shop.ts\"; await mongoose.connect(process.env.MONGODB_URI); const email=\"appzonix@gmail.com\"; if (await User.exists({ email })) { console.log(\"Account already exists; no changes made.\"); } else { const ownerName=\"Local Test User\"; const passwordHash=await bcrypt.hash(\"123456789012\",12); const user=await User.create({ ownerName, email, passwordHash, termsAcceptedAt:new Date(), emailVerifiedAt:new Date() }); try { await Shop.create({ ownerId:user._id, slug:`local-test-${Date.now()}`, displayName:\"Local Test Shop\", ownerName, mobile:\"0000000000\", email }); console.log(\"Local test account and shop created.\"); } catch (error) { await User.deleteOne({ _id:user._id }); throw error; } } await mongoose.disconnect();'",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Provision local test account",
+			"type": "shell",
+			"command": "$env:MONGODB_URI='mongodb://127.0.0.1:27017/printly'; npx tsx server/create-local-test-account.ts",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Create local test credentials",
+			"type": "shell",
+			"command": "$env:MONGODB_URI='mongodb://127.0.0.1:27017/printly'; npx tsx server/create-local-test-account.ts",
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }

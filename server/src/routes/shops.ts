@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { isValidObjectId } from "mongoose";
 import { z } from "zod";
 import { Shop } from "../models/Shop.js";
+import { User } from "../models/User.js";
 import { calculateQuote } from "../pricing.js";
 
 export const shopsRouter = Router();
@@ -15,6 +16,8 @@ const rateSchema = z.object({
 });
 const shopSettingsSchema = z.object({
   displayName: z.string().trim().min(2).max(100),
+  ownerName: z.string().trim().min(2).max(100),
+  logoDataUrl: z.string().max(700000).refine((value) => value === "" || /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value), "Upload a PNG, JPG or WEBP logo."),
   mobile: z.string().trim().regex(/^[+0-9 ()-]{7,20}$/),
   address: z.string().trim().max(300),
   city: z.string().trim().max(100),
@@ -31,14 +34,17 @@ const shopSettingsSchema = z.object({
   locationLatitude: z.number().min(-90).max(90).optional(),
   locationLongitude: z.number().min(-180).max(180).optional(),
   locationRadiusMeters: z.number().int().min(50).max(5000),
-  notificationPreferences: z.object({ newOrder: z.boolean(), printFailed: z.boolean(), uploadSound: z.boolean(), dailyEmail: z.boolean() }).strict(),
+  notificationPreferences: z.object({ newOrder: z.boolean(), printFailed: z.boolean(), uploadSound: z.boolean(), customerUploadVoice: z.boolean(), dailyEmail: z.boolean() }).strict(),
   bulkDiscountMinPages: z.number().int().min(0).max(100000),
   bulkDiscountPercent: z.number().min(0).max(90),
   discountTiers: z.array(z.object({ minUnits: z.number().int().min(1).max(1000000), maxUnits: z.number().int().min(1).max(1000000), percent: z.number().min(0).max(90) }).strict()).max(20),
+  discountGroups: z.array(z.object({
+    paperSize: z.enum(["all", ...paperSizes]),
+    ranges: z.array(z.object({ minPages: z.number().int().min(1).max(1000000), maxPages: z.number().int().min(1).max(1000000).nullable().optional(), percent: z.number().min(0).max(90) }).strict()).max(50),
+  }).strict()).max(20),
   collectCustomerName: z.boolean(),
   collectCustomerMobile: z.boolean(),
-  fileRetentionHours: z.number().int().min(1).max(720),
-  autoApproveAfterPayment: z.boolean(),
+  fileRetentionHours: z.number().min(0.25).max(720),
   enabledPaperSizes: z.array(z.enum(paperSizes)).min(1).max(4),
   colourEnabled: z.boolean(),
   duplexEnabled: z.boolean(),
@@ -96,6 +102,9 @@ const shopSettingsSchema = z.object({
   value.discountTiers.forEach((tier, index) => {
     if (tier.maxUnits < tier.minUnits) context.addIssue({ code: z.ZodIssueCode.custom, path: ["discountTiers", index, "maxUnits"], message: "Maximum units must be at least the minimum." });
   });
+  value.discountGroups.forEach((group, groupIndex) => group.ranges.forEach((range, rangeIndex) => {
+    if (range.maxPages != null && range.maxPages < range.minPages) context.addIssue({ code: z.ZodIssueCode.custom, path: ["discountGroups", groupIndex, "ranges", rangeIndex, "maxPages"], message: "Maximum pages must be at least the minimum." });
+  }));
 });
 
 const quoteSchema = z.object({
@@ -131,6 +140,7 @@ shopsRouter.patch("/notifications", async (request, response, next) => {
     newOrder: z.boolean().optional(),
     printFailed: z.boolean().optional(),
     uploadSound: z.boolean().optional(),
+    customerUploadVoice: z.boolean().optional(),
     dailyEmail: z.boolean().optional(),
   }).strict().refine((value) => Object.keys(value).length > 0).safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Choose at least one notification preference." }); return; }
@@ -174,6 +184,7 @@ shopsRouter.put("/me", async (request, response, next) => {
       response.status(404).json({ error: "Shop settings were not found." });
       return;
     }
+    await User.updateOne({ _id: request.session.userId }, { $set: { ownerName: parsed.data.ownerName } });
     response.json({ shop });
   } catch (error) {
     next(error);

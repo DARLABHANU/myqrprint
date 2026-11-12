@@ -6,6 +6,7 @@ const pendingRegistrationSchema = new Schema(
     ownerName: { type: String, required: true, trim: true, maxlength: 100 },
     shopName: { type: String, required: true, trim: true, maxlength: 100 },
     mobile: { type: String, required: true, trim: true, maxlength: 20 },
+    passwordHash: { type: String, required: true, select: false },
     termsAcceptedAt: { type: Date, required: true },
     codeHash: { type: String, required: true, select: false },
     expiresAt: { type: Date, required: true, index: { expires: 0 } },

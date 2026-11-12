@@ -4,7 +4,5 @@ declare module "express-session" {
   interface SessionData {
     userId?: string;
     customerFlow?: boolean;
-    pendingTwoFactorUserId?: string;
-    pendingOtpUserId?: string;
   }
 }
