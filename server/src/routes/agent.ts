@@ -89,15 +89,32 @@ agentRouter.post("/pair", pairingLimiter, async (request, response, next) => {
 
     const accessToken = randomBytes(48).toString("base64url");
     const tokenExpiresAt = new Date(now.getTime() + accessTokenLifetimeMs);
-    const agent = await AgentDevice.create({
-      shopId: pairing.shopId,
-      deviceName: parsed.data.deviceName,
-      agentVersion: parsed.data.agentVersion,
-      tokenHash: hashSecret(accessToken),
-      tokenExpiresAt,
-      status: "online",
-      lastSeenAt: now,
-    });
+    let agent = await AgentDevice.findOne({ shopId: pairing.shopId, deviceName: parsed.data.deviceName });
+    if (agent) {
+      agent.agentVersion = parsed.data.agentVersion;
+      agent.tokenHash = hashSecret(accessToken);
+      agent.tokenExpiresAt = tokenExpiresAt;
+      agent.status = "online";
+      agent.lastSeenAt = now;
+      agent.revokedAt = undefined;
+      await agent.save();
+    } else {
+      agent = await AgentDevice.create({
+        shopId: pairing.shopId,
+        deviceName: parsed.data.deviceName,
+        agentVersion: parsed.data.agentVersion,
+        tokenHash: hashSecret(accessToken),
+        tokenExpiresAt,
+        status: "online",
+        lastSeenAt: now,
+      });
+    }
+
+    // Ensure all existing Windows printers for this shop link to this agent device
+    await ShopPrinter.updateMany(
+      { shopId: pairing.shopId, protocol: "windows" },
+      { $set: { agentDeviceId: agent._id, status: "ready" } }
+    );
     response.status(201).json({
       deviceId: String(agent._id),
       deviceName: agent.deviceName,

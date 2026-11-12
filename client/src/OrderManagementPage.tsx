@@ -326,38 +326,15 @@ export function OrderManagementPage() {
   }
 
   return (
-    <div className="workspace-page">
-      <header className="workspace-header">
-        <a className="brand" href="/"><span className="brand-mark"><QrCode size={20} /></span><span>printly<span className="brand-period">.</span></span></a>
-        <div className="workspace-header-right">
-          <span className="workspace-greeting">{shop?.displayName ?? "Shop workspace"}</span>
-          <button className="logout-button" onClick={() => void logout()} type="button"><LogOut size={15} /> Sign out</button>
+    <div className="workspace-page" style={{ background: "#f8fafc", minHeight: "100vh" }}>
+      <main className="settings-main order-workspace-main" style={{ maxWidth: 1080, margin: "0 auto", padding: "28px 20px 80px" }}>
+        <div className="settings-title-row order-title-row">
+          <h1>Print jobs</h1>
+          <button className="order-refresh-button" type="button" disabled={refreshing} onClick={() => void loadOrders(true)}><RefreshCw className={refreshing ? "spin" : ""} size={14} /> Refresh</button>
         </div>
-      </header>
-      <div className="workspace-layout">
-        <aside className="workspace-sidebar">
-          <div className="sidebar-shop"><span><Store size={18} /></span><div><b>{shop?.displayName ?? "Your print shop"}</b><small>Shop workspace</small></div></div>
-          <div className="sidebar-label">SHOP MANAGEMENT</div>
-          <a className="sidebar-link" href="/dashboard">Overview</a>
-          <a className="sidebar-link" href="/dashboard/settings"><Printer size={17} /> Shop settings</a>
-          <a className="sidebar-link active" href="/dashboard/orders"><Clock3 size={17} /> Orders</a>
-          <a className="sidebar-link" href="/dashboard/payments">Payment records</a>
-          <a className="sidebar-link" href="/dashboard/reports">Reports</a>
-          <a className="sidebar-link" href="/dashboard/printers">Printers & routing</a>
-          <a className="sidebar-link" href="/dashboard/qr-code">My QR code</a>
-          <a className="sidebar-link" href="/dashboard/subscription">Subscription</a>
-          <a className="sidebar-link" href="/dashboard/payments">Direct payment records</a>
-          <a className="sidebar-link" href="/dashboard/support">Help & support</a>
-          <div className="sidebar-help"><CircleHelp size={17} /><b>Payment safety</b><p>UPI receipts are not verified automatically. Confirm payment only after checking your account.</p></div>
-        </aside>
-        <main className="settings-main order-workspace-main">
-          <div className="settings-title-row order-title-row">
-            <h1>Print jobs</h1>
-            <button className="order-refresh-button" type="button" disabled={refreshing} onClick={() => void loadOrders(true)}><RefreshCw className={refreshing ? "spin" : ""} size={14} /> Refresh</button>
-          </div>
-          {error && <div className="form-alert settings-alert" role="alert">{error}</div>}
-          {notice && <div className="success-alert" role="status"><Check size={16} />{notice}</div>}
-          <section className="jobs-filter-card">
+        {error && <div className="form-alert settings-alert" role="alert">{error}</div>}
+        {notice && <div className="success-alert" role="status"><Check size={16} />{notice}</div>}
+        <section className="jobs-filter-card">
             <div className="order-filter-tabs" role="tablist" aria-label="Filter print jobs">
               {filterLabels.map((item) => <button key={item.id} type="button" role="tab" aria-selected={filter === item.id} className={filter === item.id ? "active" : ""} onClick={() => { setFilter(item.id); setPage(1); }}>{item.label}<span>{item.id === "all" ? orders.length : counts[item.id]}</span></button>)}
             </div>
@@ -425,9 +402,7 @@ export function OrderManagementPage() {
                   </details>}
                 </article>)}
               </div><div className="order-pagination"><span>{matchingOrders.length} matching orders</span><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button><span>Page {page} of {pageCount}</span><button type="button" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>Next</button></div></>}
-        </main>
-      </div>
-      <footer className="workspace-footer"><a href="/">printly.</a><span>Thoughtful tools for your local print shop.</span><span>Payments confirmed manually</span></footer>
+      </main>
     </div>
   );
 }

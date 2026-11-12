@@ -1,3 +1,4 @@
+import type { PrintPayload } from '../types';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;

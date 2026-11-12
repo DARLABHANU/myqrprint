@@ -18,6 +18,10 @@ type ShopSummary = {
   displayName: string;
   isOnline: boolean;
   notificationPreferences?: { newOrder: boolean; printFailed: boolean; uploadSound: boolean; customerUploadVoice: boolean; dailyEmail: boolean };
+  subscriptionPlan?: string;
+  subscriptionExpiresAt?: string;
+  subscriptionOrderLimit?: number;
+  subscriptionOrdersUsed?: number;
 };
 type AccountSummary = { ownerName: string; email: string };
 type OrderStatus = { id?: string; _id?: string; code: string; status: string };
@@ -82,6 +86,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const seenOrders = useRef<Map<string, string> | null>(null);
   const preferencesRef = useRef(shop?.notificationPreferences);
   preferencesRef.current = shop?.notificationPreferences;
@@ -195,17 +200,162 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
     ["Shop profile", "/dashboard/settings/profile"], ["Account & security", "/dashboard/settings/security"], ["Privacy", "/dashboard/settings/privacy"],
   ] : [];
 
-  return <div className="shop-dashboard-shell">
-    <aside className={`shop-dashboard-sidebar${mobileNavOpen ? " is-open" : ""}`}>
-      <a className="shop-dashboard-brand" href="/dashboard"><span className="brand-mark"><QrCode size={19} /></span><b>Printly</b></a>
+  const planTitle = !shop?.subscriptionPlan || shop.subscriptionPlan === "demo"
+    ? "Free Demo"
+    : shop.subscriptionPlan === "starter"
+      ? "Starter Plan"
+      : shop.subscriptionPlan === "pro"
+        ? "Pro Plan"
+        : "Enterprise";
+
+  const daysLeft = shop?.subscriptionExpiresAt
+    ? Math.max(0, Math.ceil((new Date(shop.subscriptionExpiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+    : 5;
+
+  const daysBarPercent = Math.min(100, Math.max(8, (daysLeft / 7) * 100));
+  const maxOrders = shop?.subscriptionOrderLimit ?? 50;
+  const usedOrders = shop?.subscriptionOrdersUsed ?? 4;
+  const ordersBarPercent = Math.min(100, Math.max(6, (usedOrders / maxOrders) * 100));
+
+  return <div className={`shop-dashboard-shell${sidebarCollapsed ? " is-collapsed" : ""}`} style={{ gridTemplateColumns: sidebarCollapsed ? "72px minmax(0,1fr)" : "244px minmax(0,1fr)", transition: "grid-template-columns 0.2s ease" }}>
+    <aside className={`shop-dashboard-sidebar${mobileNavOpen ? " is-open" : ""}${sidebarCollapsed ? " is-collapsed" : ""}`} style={{ width: sidebarCollapsed ? 72 : 244, transition: "width 0.2s ease", padding: sidebarCollapsed ? "17px 8px 12px" : "17px 14px 12px" }}>
+      <a className="shop-dashboard-brand" href="/dashboard" style={{ justifyContent: sidebarCollapsed ? "center" : "flex-start", padding: sidebarCollapsed ? 0 : "0 10px" }}><span className="brand-mark"><QrCode size={19} /></span>{!sidebarCollapsed && <b>Printly</b>}</a>
       <button className="shop-sidebar-close" type="button" aria-label="Close menu" onClick={() => setMobileNavOpen(false)}><X size={18} /></button>
-      <div className="shop-sidebar-identity"><span className="shop-sidebar-avatar"><Store size={17} /></span><div><b>{shop?.displayName ?? "Your print shop"}</b><small>{shop?.isOnline ? "Shop online" : "Shop offline"}</small></div></div>
+      <div className="shop-sidebar-identity" style={{ padding: sidebarCollapsed ? "8px 0" : "10px 8px", justifyContent: sidebarCollapsed ? "center" : "flex-start" }}><span className="shop-sidebar-avatar"><Store size={17} /></span>{!sidebarCollapsed && <div><b>{shop?.displayName ?? "Your print shop"}</b><small>{shop?.isOnline ? "Shop online" : "Shop offline"}</small></div>}</div>
       {navGroups.map((group) => <nav className="shop-sidebar-group" key={group.label} aria-label={group.label === "MAIN" ? "Main" : "Shop"}>
-        <p>{group.label}</p>
-        {group.links.map(({ title, href, icon: Icon }) => <a className={`shop-sidebar-link${pathIsActive(path, href) ? " active" : ""}`} href={href} key={title} aria-current={pathIsActive(path, href) ? "page" : undefined} onClick={() => setMobileNavOpen(false)}><Icon size={17} /><span>{title}</span></a>)}
+        {!sidebarCollapsed && <p>{group.label}</p>}
+        {group.links.map(({ title, href, icon: Icon }) => <a className={`shop-sidebar-link${pathIsActive(path, href) ? " active" : ""}`} href={href} key={title} aria-current={pathIsActive(path, href) ? "page" : undefined} title={sidebarCollapsed ? title : undefined} style={{ justifyContent: sidebarCollapsed ? "center" : "flex-start", padding: sidebarCollapsed ? "0" : "0 10px" }} onClick={() => setMobileNavOpen(false)}><Icon size={17} />{!sidebarCollapsed && <span>{title}</span>}</a>)}
       </nav>)}
-      <a className="shop-plan-summary" href="/dashboard/subscription"><b>My Subscription</b><span>View plans & quota</span><small>Manage your shop order capacity.</small></a>
-      <small className="shop-sidebar-version">PRINTLY · SHOP WORKSPACE</small>
+
+      {/* Free Demo / Subscription Card */}
+      {!sidebarCollapsed ? (
+        <div
+          style={{
+            marginTop: "auto",
+            background: "linear-gradient(135deg, #b85208 0%, #9e4003 100%)",
+            borderRadius: 14,
+            padding: "14px 16px 14px",
+            color: "#ffffff",
+            boxShadow: "0 4px 14px rgba(184, 82, 8, 0.22)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <b style={{ fontSize: 16, fontWeight: 800, color: "#ffffff", letterSpacing: "-0.2px" }}>
+              {planTitle}
+            </b>
+            <a
+              href="/dashboard/subscription"
+              style={{
+                background: "#ffffff",
+                color: "#0f172a",
+                fontSize: 12,
+                fontWeight: 700,
+                padding: "3px 12px",
+                borderRadius: 6,
+                textDecoration: "none",
+                display: "inline-block",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+              }}
+            >
+              Renew
+            </a>
+          </div>
+
+          {/* Days left */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+              <span style={{ color: "rgba(255, 255, 255, 0.95)", fontWeight: 500 }}>Days left</span>
+              <span style={{ fontWeight: 700, color: "#ffffff", fontSize: 13 }}>{daysLeft}</span>
+            </div>
+            <div style={{ height: 4, borderRadius: 999, background: "rgba(255, 255, 255, 0.28)", overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  borderRadius: 999,
+                  background: "#ffffff",
+                  width: `${daysBarPercent}%`,
+                  transition: "width 0.3s ease",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Print orders */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+              <span style={{ color: "rgba(255, 255, 255, 0.95)", fontWeight: 500 }}>Print orders</span>
+              <span style={{ fontWeight: 700, color: "#ffffff", fontSize: 13 }}>
+                {usedOrders} / {maxOrders}
+              </span>
+            </div>
+            <div style={{ height: 4, borderRadius: 999, background: "rgba(255, 255, 255, 0.28)", overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  borderRadius: 999,
+                  background: "#ffffff",
+                  width: `${ordersBarPercent}%`,
+                  transition: "width 0.3s ease",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <a
+          href="/dashboard/subscription"
+          title={`${planTitle} · ${daysLeft} days left · ${usedOrders}/${maxOrders} orders`}
+          style={{
+            marginTop: "auto",
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            background: "#b85208",
+            color: "#ffffff",
+            display: "grid",
+            placeItems: "center",
+            margin: "auto auto 0",
+            fontSize: 11,
+            fontWeight: 800,
+            textDecoration: "none",
+          }}
+        >
+          {daysLeft}d
+        </a>
+      )}
+
+      {/* Footer under card: Collapse & Version */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: sidebarCollapsed ? "center" : "space-between",
+          padding: sidebarCollapsed ? "12px 0 2px" : "12px 4px 2px",
+          color: "#94a3b8",
+          fontSize: 11,
+          fontWeight: 600,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#64748b",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            padding: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {sidebarCollapsed ? "»" : "« Collapse"}
+        </button>
+        {!sidebarCollapsed && <span style={{ color: "#94a3b8", fontSize: 11 }}>V1.0.2</span>}
+      </div>
     </aside>
     {mobileNavOpen && <button className="shop-sidebar-backdrop" type="button" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />}
     <div className="shop-dashboard-workarea">

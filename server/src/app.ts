@@ -24,7 +24,7 @@ const allowedOrigins = new Set(
 );
 
 function isAllowedOrigin(origin: string | undefined): boolean {
-  if (!origin) return true;
+  if (!origin || origin === "null" || origin.startsWith("file:") || origin.startsWith("vscode-webview:")) return true;
   if (allowedOrigins.has(origin)) return true;
   if (process.env.NODE_ENV !== "production" || /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin)) {
     return true;

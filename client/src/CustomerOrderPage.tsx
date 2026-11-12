@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
+  CheckCircle2,
   ChevronDown,
+  Clock,
+  Copy,
+  CreditCard,
+  ExternalLink,
   FileImage,
   FileText,
+  Image as ImageIcon,
   LoaderCircle,
+  Lock,
   Minus,
   Plus,
   QrCode,
@@ -14,6 +22,7 @@ import {
   Store,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -90,13 +99,12 @@ const layouts = [
   { value: "nine", label: "9 photos per page", shortLabel: "9", capacity: 9, columns: 3 },
 ];
 
-const money = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
+const money = (paise: number) => `₹${(paise / 100).toFixed(paise % 100 === 0 ? 0 : 2)}`;
 
 function createIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-
   const bytes = new Uint8Array(16);
   if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
     crypto.getRandomValues(bytes);
@@ -113,7 +121,7 @@ function createIdempotencyKey(): string {
 
 async function getApiError(response: Response): Promise<string> {
   try {
-    const body = await response.json() as { error?: string };
+    const body = (await response.json()) as { error?: string };
     return body.error ?? `Request failed (${response.status}).`;
   } catch {
     return `Request failed (${response.status}).`;
@@ -148,6 +156,11 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
   const [claimError, setClaimError] = useState("");
   const [claiming, setClaiming] = useState(false);
   const [statusError, setStatusError] = useState("");
+  const [copiedUpi, setCopiedUpi] = useState(false);
+
+  // UPI payment prompt modal state
+  const [upiModalOpen, setUpiModalOpen] = useState(false);
+
   const fileInput = useRef<HTMLInputElement>(null);
   const idempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const previewUrlsRef = useRef<string[]>([]);
@@ -167,7 +180,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
           { credentials: "same-origin" },
         );
         if (!response.ok) throw new Error(await getApiError(response));
-        const result = await response.json() as { order: OrderConfirmation };
+        const result = (await response.json()) as { order: OrderConfirmation };
         if (active) {
           setOrder(result.order);
           setStatusError("");
@@ -177,7 +190,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
       }
     };
     void refreshStatus();
-    const timer = window.setInterval(() => void refreshStatus(), 15_000);
+    const timer = window.setInterval(() => void refreshStatus(), 12_000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -193,7 +206,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
           signal: controller.signal,
         });
         if (!response.ok) throw new Error(await getApiError(response));
-        const body = await response.json() as { shop: PublicShop };
+        const body = (await response.json()) as { shop: PublicShop };
         setShop(body.shop);
         setSelectedPayment(body.shop.upiId ? "upi" : "cash");
         const firstSize = body.shop.enabledPaperSizes[0] ?? "A4";
@@ -235,7 +248,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
             signal: controller.signal,
           });
           if (!response.ok) throw new Error(await getApiError(response));
-          const body = await response.json() as { quote: Quote };
+          const body = (await response.json()) as { quote: Quote };
           setQuote(body.quote);
           setQuoteError("");
         } catch (reason) {
@@ -245,7 +258,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
           }
         }
       })();
-    }, 250);
+    }, 200);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
@@ -270,7 +283,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
         body,
       });
       if (!response.ok) throw new Error(await getApiError(response));
-      const result = await response.json() as { uploads: UploadItem[] };
+      const result = (await response.json()) as { uploads: UploadItem[] };
       const uploadedItems = result.uploads.map((item, index) => {
         const file = selected[index];
         const previewUrl = file ? URL.createObjectURL(file) : undefined;
@@ -318,11 +331,30 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
       let location: { customerLatitude: number; customerLongitude: number } | Record<string, never> = {};
       if (shop.locationLockEnabled) {
         if (!navigator.geolocation) throw new Error("Location access is required to place an order at this shop.");
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, () => reject(new Error("Allow location access and try placing your order again at the shop.")), { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }));
+        const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(
+            resolve,
+            () => reject(new Error("Allow location access and try placing your order again at the shop.")),
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+          ),
+        );
         location = { customerLatitude: position.coords.latitude, customerLongitude: position.coords.longitude };
       }
-      const payload = { uploadIds, options, paymentMethod, ...location, ...(shop.collectCustomerName ? { customerName } : {}), ...(shop.collectCustomerMobile ? { customerMobile } : {}) };
-      const logicalOrder = { uploadIds, options, paymentMethod, ...(shop.collectCustomerName ? { customerName } : {}), ...(shop.collectCustomerMobile ? { customerMobile } : {}) };
+      const payload = {
+        uploadIds,
+        options,
+        paymentMethod,
+        ...location,
+        ...(shop.collectCustomerName ? { customerName } : {}),
+        ...(shop.collectCustomerMobile ? { customerMobile } : {}),
+      };
+      const logicalOrder = {
+        uploadIds,
+        options,
+        paymentMethod,
+        ...(shop.collectCustomerName ? { customerName } : {}),
+        ...(shop.collectCustomerMobile ? { customerMobile } : {}),
+      };
       const fingerprint = JSON.stringify(logicalOrder);
       let idempotency = idempotencyRef.current;
       if (idempotency?.fingerprint !== fingerprint) {
@@ -340,8 +372,14 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(await getApiError(response));
-      const body = await response.json() as { order: OrderConfirmation };
+      const body = (await response.json()) as { order: OrderConfirmation };
       setOrder(body.order);
+
+      // If UPI was chosen, open the personal UPI prompt modal!
+      if (paymentMethod === "upi") {
+        setUpiModalOpen(true);
+      }
+
       if (shop.customerUploadVoice && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
         const announcement = new SpeechSynthesisUtterance("Your order has been placed successfully.");
@@ -350,9 +388,13 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
       }
       setQuote(null);
     } catch (reason) {
-      setError(reason instanceof Error && reason.name === "AbortError"
-        ? "The order request timed out. Please retry; we’ll safely check whether it was already received."
-        : reason instanceof Error ? reason.message : "Your order could not be placed. Please retry.");
+      setError(
+        reason instanceof Error && reason.name === "AbortError"
+          ? "The order request timed out. Please retry; we’ll safely check whether it was already received."
+          : reason instanceof Error
+            ? reason.message
+            : "Your order could not be placed. Please retry.",
+      );
     } finally {
       window.clearTimeout(timeout);
       setSubmitting(false);
@@ -375,8 +417,9 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
         },
       );
       if (!response.ok) throw new Error(await getApiError(response));
-      const result = await response.json() as { message: string };
+      const result = (await response.json()) as { message: string };
       setClaimMessage(result.message);
+      setUpiModalOpen(false);
     } catch (reason) {
       setClaimError(reason instanceof Error ? reason.message : "Could not report payment.");
     } finally {
@@ -404,12 +447,40 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
     setQuote(null);
   }
 
+  function copyUpiId() {
+    if (!shop?.upiId) return;
+    navigator.clipboard.writeText(shop.upiId).then(() => {
+      setCopiedUpi(true);
+      setTimeout(() => setCopiedUpi(false), 2000);
+    }).catch(() => {});
+  }
+
   if (loading) {
-    return <main className="customer-state"><LoaderCircle className="spin" size={23} />Loading this shop…</main>;
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f8fafc", color: "#64748b" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 600 }}>
+          <LoaderCircle className="spin" size={24} color="#079c73" />
+          <span>Opening {slug}…</span>
+        </div>
+      </div>
+    );
   }
+
   if (error && !shop) {
-    return <main className="customer-state customer-error"><Store size={23} /><h1>Shop unavailable</h1><p>{error}</p><a href="/">Go to Printly</a></main>;
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f8fafc", padding: 20 }}>
+        <div style={{ maxWidth: 400, textAlign: "center", background: "#fff", padding: 32, borderRadius: 16, border: "1px solid #e2e8f0" }}>
+          <Store size={36} color="#dc2626" style={{ margin: "0 auto 12px" }} />
+          <h1 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>Shop Unavailable</h1>
+          <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "0 0 20px" }}>{error}</p>
+          <a href="/" style={{ display: "inline-block", padding: "8px 18px", borderRadius: 8, background: "#079c73", color: "#fff", fontSize: 13, fontWeight: 700 }}>
+            Go to Printly
+          </a>
+        </div>
+      </div>
+    );
   }
+
   if (!shop) return null;
 
   const photoLayout = layouts.find((layout) => layout.value === options.photoLayout) ?? layouts[0];
@@ -417,174 +488,1187 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
   const photoPages = Array.from({ length: Math.ceil(photos.length / photoLayout.capacity) }, (_, index) =>
     photos.slice(index * photoLayout.capacity, (index + 1) * photoLayout.capacity),
   );
-  const paymentMethod: "upi" | "cash" = shop.upiId && selectedPayment === "upi"
-    ? "upi"
-    : shop.cashEnabled ? "cash" : "upi";
-  const paymentStep = mode === "photo" ? 4 : 3;
-  const printOptionsStep = mode === "photo" ? 3 : 2;
 
-  if (order) {
-    const upiLink = shop.upiId
-      ? `upi://pay?pa=${encodeURIComponent(shop.upiId)}&pn=${encodeURIComponent(shop.displayName)}&am=${(order.amountPaise / 100).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Print order ${order.code}`)}`
-      : "";
-    return (
-      <div className="customer-page">
-        <CustomerHeader />
-        <main className="customer-confirmation">
-          <div className="confirmation-check"><Check size={26} /></div>
-          <div className="customer-eyebrow">ORDER RECEIVED</div>
-          <h1>Your print order is in.</h1>
-          <p className="confirmation-copy">Show this pickup code at the counter. The shop will confirm payment and update your order after manual fulfillment.</p>
-          <p className="customer-retention-note" role="note">Printer automation is temporarily paused. Your shop may fulfill orders manually; contact the shop if you need to confirm availability.</p>
-          <div className="pickup-code"><small>PICKUP CODE</small><b>{order.code}</b><span>{customerOrderStatus(order.status, order.paymentStatus)}</span></div>
-          {statusError && <p className="customer-status-error" role="status">{statusError} We’ll keep trying to refresh.</p>}
-          <div className="confirmation-total"><span>Order total</span><b>{money(order.amountPaise)}</b></div>
-          {order.paymentMethod === "upi" && order.paymentStatus !== "paid" && <div className="upi-instructions">
-            <h2>Pay the shop directly</h2>
-            <p>Pay in your UPI app. This page cannot verify a payment; the shopkeeper will check it and confirm.</p>
-            <div className="upi-id-card"><span>SHOP UPI ID</span><b>{shop.upiId}</b><span>Amount: {money(order.amountPaise)}</span></div>
-            <div className="customer-upi-qr" role="img" aria-label="Scan this QR code to pay the shop directly">
-              <QRCodeSVG value={upiLink} size={176} level="M" includeMargin fgColor="#17241f" bgColor="#ffffff" />
-              <span>Scan to pay {money(order.amountPaise)} directly to the shop</span>
-            </div>
-            <a className="customer-primary-button" href={upiLink}>Open UPI app</a>
-            <label className="customer-field">UPI reference number <span>Optional</span><input value={claimReference} maxLength={80} onChange={(event) => setClaimReference(event.target.value)} placeholder="Enter UTR / reference" /></label>
-            {claimError && <p className="customer-alert" role="alert">{claimError}</p>}
-            {claimMessage && <p className="customer-success" role="status"><Check size={15} />{claimMessage}</p>}
-            <button className="customer-secondary-button" type="button" disabled={claiming || Boolean(claimMessage)} onClick={() => void reportPayment()}>{claiming ? "Sending…" : "I've paid — tell the shop"}</button>
-            <p className="verification-note"><ShieldCheck size={14} /> Your payment stays unverified until the shop confirms it.</p>
-          </div>}
-          {order.paymentMethod === "cash" && <div className="cash-instructions"><h2>{order.paymentStatus === "paid" ? "Cash confirmed" : "Pay at the counter"}</h2><p>{order.paymentStatus === "paid" ? "The shop has confirmed your cash payment. Your order status will update after manual fulfillment." : `Show your pickup code and pay ${money(order.amountPaise)} at the shop. The shopkeeper will confirm cash before fulfillment.`}</p></div>}
-          {order.paymentMethod === "upi" && order.paymentStatus === "paid" && <div className="cash-instructions"><h2>Payment confirmed</h2><p>The shop has verified your UPI payment. Your order status will update after manual fulfillment.</p></div>}
-          <a className="back-link customer-back" href={`/p/${encodeURIComponent(slug)}`}><ArrowLeft size={15} /> Back to shop</a>
-        </main>
-      </div>
-    );
-  }
+  const effectivePayment = shop.upiId && selectedPayment === "upi" ? "upi" : shop.cashEnabled ? "cash" : "upi";
+
+  // Standard NPCI Personal UPI Payment URI
+  const currentAmount = order ? order.amountPaise / 100 : quote ? quote.amountPaise / 100 : 0;
+  const upiLink = shop.upiId
+    ? `upi://pay?pa=${encodeURIComponent(shop.upiId)}&pn=${encodeURIComponent(shop.displayName)}${currentAmount > 0 ? `&am=${currentAmount.toFixed(2)}` : ""}&cu=INR&tn=${encodeURIComponent(order ? `Printly Order ${order.code}` : `Print at ${shop.displayName}`)}`
+    : "";
 
   return (
-    <div className="customer-page">
-      <CustomerHeader />
-      <main className="customer-order-layout">
-        <div className="customer-shop-banner"><span>{shop.logoDataUrl ? <img src={shop.logoDataUrl} alt=""/> : <Store size={20} />}</span><b>{shop.displayName}</b></div>
-        <p className="customer-retention-note" role="note">Printer automation is temporarily paused. The shop can still review orders and handle fulfillment manually; contact the shop if you need to confirm availability.</p>
-
-        <section className="customer-order-card">
-          <SectionHeading number={1} title="Upload files" hint="max 10" />
-          <div className="customer-mode-tabs" role="tablist" aria-label="Upload type">
-            <button type="button" role="tab" aria-selected={mode === "document"} className={mode === "document" ? "active" : ""} onClick={() => changeMode("document")}><FileText size={19} /><span><b>Document</b><small>PDF</small></span></button>
-            <button type="button" role="tab" aria-selected={mode === "photo"} className={mode === "photo" ? "active" : ""} onClick={() => changeMode("photo")}><FileImage size={19} /><span><b>Photo / Image</b><small>JPG, PNG, WEBP</small></span></button>
+    <div style={{ background: "#f8fafc", minHeight: "100vh", paddingBottom: 110, fontFamily: "DM Sans, sans-serif" }}>
+      {/* Top Navbar */}
+      <header
+        style={{
+          background: "#ffffff",
+          borderBottom: "1px solid #e2e8f0",
+          height: 64,
+          display: "flex",
+          alignItems: "center",
+          position: "sticky",
+          top: 0,
+          zIndex: 30,
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 520,
+            width: "100%",
+            margin: "0 auto",
+            padding: "0 18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          {/* Logo */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: "#079c73",
+                color: "#ffffff",
+                display: "grid",
+                placeItems: "center",
+                fontWeight: 800,
+              }}
+            >
+              <QrCode size={18} />
+            </div>
+            <span style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.4px" }}>
+              QrToPrint
+            </span>
           </div>
-          {uploads.length > 0 && <small className="customer-mode-note">Remove files to change the type</small>}
-          <input ref={fileInput} className="visually-hidden" type="file" multiple accept={mode === "document" ? "application/pdf,.pdf" : "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"} onChange={(event: ChangeEvent<HTMLInputElement>) => { const selected = Array.from(event.target.files ?? []); event.target.value = ""; void uploadFiles(selected); }} />
-          <button className="customer-dropzone" type="button" disabled={uploading || uploads.length >= 10} onClick={() => fileInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void uploadFiles(Array.from(event.dataTransfer.files)); }}>
-            <span className="dropzone-icon">{uploading ? <LoaderCircle className="spin" size={22} /> : <Upload size={21} />}</span>
-            <b>{uploading ? "Checking and uploading…" : uploads.length >= 10 ? "Maximum 10 files added" : uploads.length ? "Add more files" : "Choose files"}</b>
-            <small>{mode === "document" ? "PDF · Up to 25 MB each · or drag them here" : "JPG, PNG, WEBP · up to 25.0 MB · or drag them here"}</small>
-          </button>
-          {uploads.length > 0 && <div className="customer-file-list">
-            {uploads.map((file) => <div className="customer-file-row" key={file.id}>
-              {file.kind === "photo" && file.previewUrl
-                ? <img className="customer-file-thumbnail" src={file.previewUrl} alt={`Preview of ${file.name}`} />
-                : <span className="customer-file-icon">{file.kind === "photo" ? <FileImage size={17} /> : <FileText size={17} />}</span>}
-              <span className="customer-file-info"><b>{file.name}</b><small>{file.kind === "photo" ? "Photo" : `PDF · ${file.pageCount} ${file.pageCount === 1 ? "page" : "pages"}`} · {(file.sizeBytes / 1024 / 1024).toFixed(1)} MB</small></span>
-              <button type="button" aria-label={`Remove ${file.name}`} disabled={Boolean(removingId)} onClick={() => void removeUpload(file.id)}>{removingId === file.id ? <LoaderCircle className="spin" size={16} /> : <X size={16} />}</button>
-            </div>)}
-            <div className="source-page-count">{totalSourcePages} {isPhotoOrder ? "photo" : "document"}{totalSourcePages === 1 ? "" : "s"} · Total {totalSourcePages} {totalSourcePages === 1 ? "page" : "pages"}</div>
-          </div>}
-          {mode === "document" && uploads.some((item) => item.kind === "document" && item.previewUrl) && <div className="pdf-preview-block">
-            <div className="photo-preview-heading"><b>Document preview</b><span>{totalSourcePages} {totalSourcePages === 1 ? "page" : "pages"}</span></div>
-            <div className="pdf-preview-list">{uploads.filter((item) => item.kind === "document" && item.previewUrl).map((file) => <div className="pdf-preview-card" key={file.id}>
-              <iframe title={`Preview of ${file.name}`} src={`${file.previewUrl}#page=1&toolbar=0&navpanes=0`} />
-              <div><b>{file.name}</b><span>{file.pageCount} {file.pageCount === 1 ? "page" : "pages"} · first page preview</span></div>
-              <a href={file.previewUrl} target="_blank" rel="noreferrer">Open full preview</a>
-            </div>)}</div>
-          </div>}
-        </section>
 
-        {mode === "photo" && <section className="customer-order-card">
-          <SectionHeading number={2} title="Photos per page" hint="Fewer pages, lower cost" />
-          <div className="photo-layout-grid" role="group" aria-label="Photos per page">
-            {layouts.map((layout) => <button key={layout.value} type="button" className={`photo-layout-choice${options.photoLayout === layout.value ? " selected" : ""}`} aria-pressed={options.photoLayout === layout.value} onClick={() => updateOptions({ photoLayout: layout.value })}>
-              <span className={`photo-layout-icon photo-layout-${layout.value}`} style={{ gridTemplateColumns: `repeat(${layout.columns}, 1fr)` }}>{Array.from({ length: layout.capacity }, (_, index) => <i key={index} />)}</span>
-              <b>{layout.shortLabel}</b><small>{layout.value === "two_stack" ? "Stacked" : layout.value === "two_side_by_side" ? "Side by side" : ""}</small>
-            </button>)}
+          {/* Secure pill */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              color: "#079c73",
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            <ShieldCheck size={16} />
+            <span>Secure</span>
           </div>
-          {photos.length > 0 && <div className="photo-preview-block">
-            <div className="photo-preview-heading"><b>Preview</b><span>{photos.length} {photos.length === 1 ? "photo" : "photos"} → <strong>{photoPages.length} {photoPages.length === 1 ? "page" : "pages"}</strong></span></div>
-            <div className="photo-preview-pages">{photoPages.map((pagePhotos, pageIndex) => <div className="photo-preview-page-wrap" key={`photo-page-${pageIndex}`}>
-              <div className={`photo-preview-page photo-preview-${photoLayout.value}`} style={{ gridTemplateColumns: `repeat(${photoLayout.columns}, minmax(0, 1fr))` }}>
-                <span className="photo-preview-page-number">{pageIndex + 1}</span>
-                {pagePhotos.map((photo) => photo.previewUrl
-                  ? <img key={photo.id} src={photo.previewUrl} alt={photo.name} />
-                  : <span className="photo-preview-placeholder" key={photo.id}><FileImage size={18} /></span>)}
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main style={{ maxWidth: 520, margin: "0 auto", padding: "18px 16px 20px" }}>
+        {/* Dark Shop Name Banner */}
+        <div
+          style={{
+            background: "#0f172a",
+            borderRadius: 14,
+            padding: "16px 18px",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            marginBottom: 16,
+            boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: "#1e293b",
+              color: "#10b981",
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Store size={20} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <b style={{ color: "#ffffff", fontSize: 16, fontWeight: 800, display: "block", letterSpacing: "-0.2px" }}>
+              {shop.displayName}
+            </b>
+            {shop.address && (
+              <span style={{ color: "#94a3b8", fontSize: 11, display: "block", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {shop.address}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ background: "#fef2f2", border: "1px solid #fee2e2", borderRadius: 10, padding: "10px 14px", color: "#dc2626", fontSize: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* ORDER SUCCESS VIEW */}
+        {order ? (
+          <div style={{ background: "#ffffff", borderRadius: 16, border: "1px solid #e2e8f0", padding: "28px 22px", textAlign: "center", marginBottom: 20 }}>
+            <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#ecfdf5", color: "#10b981", display: "grid", placeItems: "center", margin: "0 auto 14px" }}>
+              <Check size={28} strokeWidth={2.5} />
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#079c73", letterSpacing: "1px", textTransform: "uppercase" }}>ORDER RECEIVED</span>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "6px 0 10px" }}>Your print order is in!</h1>
+            <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "0 0 20px" }}>
+              Show this pickup code at the counter. The shopkeeper will verify and print your order.
+            </p>
+
+            <div style={{ background: "#f8fafc", border: "1.5px dashed #cbd5e1", borderRadius: 14, padding: "16px", marginBottom: 20 }}>
+              <small style={{ color: "#64748b", fontSize: 11, fontWeight: 700, letterSpacing: "0.5px" }}>PICKUP CODE</small>
+              <div style={{ fontSize: 32, fontWeight: 900, color: "#0f172a", letterSpacing: "3px", margin: "4px 0" }}>
+                #{order.code}
               </div>
-              <small>Page {pageIndex + 1}</small>
-            </div>)}</div>
-          </div>}
-        </section>}
+              <span style={{ fontSize: 12, fontWeight: 700, color: order.paymentStatus === "paid" ? "#16a34a" : "#ea580c" }}>
+                {order.paymentStatus === "paid" ? "✓ Payment Confirmed" : order.paymentMethod === "upi" ? "Waiting for UPI Verification" : "Cash Due at Counter"}
+              </span>
+            </div>
 
-        <section className="customer-order-card">
-          <SectionHeading number={printOptionsStep} title="Print options" />
-          <div className="customer-options-card">
-            <label className="customer-field">Paper size<select value={options.paperSize} onChange={(event) => updateOptions({ paperSize: event.target.value })}>{shop.enabledPaperSizes.map((size) => <option key={size} value={size}>{size}</option>)}</select><ChevronDown size={15} /></label>
-            {shop.colourEnabled && <div className="customer-option-group"><span className="customer-option-label">Colour</span><div className="customer-choice-buttons"><button className={!options.colour ? "selected" : ""} type="button" onClick={() => updateOptions({ colour: false })}>B&amp;W</button><button className={options.colour ? "selected" : ""} type="button" onClick={() => updateOptions({ colour: true })}>Colour</button></div></div>}
-            {!isPhotoOrder && shop.duplexEnabled && <div className="customer-option-group"><span className="customer-option-label">Sides</span><div className="customer-choice-buttons"><button className={!options.duplex ? "selected" : ""} type="button" onClick={() => updateOptions({ duplex: false })}>Single side</button><button className={options.duplex ? "selected" : ""} type="button" onClick={() => updateOptions({ duplex: true })}>Both sides</button></div></div>}
-            <div className="customer-option-group"><span className="customer-option-label">Orientation</span><div className="customer-choice-buttons"><button className={options.orientation === "portrait" ? "selected" : ""} type="button" onClick={() => updateOptions({ orientation: "portrait" })}>Portrait</button><button className={options.orientation === "landscape" ? "selected" : ""} type="button" onClick={() => updateOptions({ orientation: "landscape" })}>Landscape</button></div></div>
-            {!isPhotoOrder && <div className="customer-option-group"><label className="customer-field">Pages to print<input value={options.pageRange} onChange={(event) => updateOptions({ pageRange: event.target.value })} placeholder={`All ${totalSourcePages || "document"} pages`} aria-describedby="page-range-help" /><small id="page-range-help">Optional. For example: 1-3, 5. Leave blank to print every page.</small></label></div>}
-            <div className="customer-option-group copies-control"><span className="customer-option-label">Copies</span><div><button type="button" aria-label="Decrease copies" disabled={options.copies <= 1} onClick={() => updateOptions({ copies: Math.max(1, options.copies - 1) })}><Minus size={14} /></button><b>{options.copies}</b><button type="button" aria-label="Increase copies" disabled={options.copies >= shop.maxCopies} onClick={() => updateOptions({ copies: Math.min(shop.maxCopies, options.copies + 1) })}><Plus size={14} /></button></div></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#f1f5f9", borderRadius: 10, marginBottom: 20 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>Order Total</span>
+              <b style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{money(order.amountPaise)}</b>
+            </div>
+
+            {order.paymentMethod === "upi" && order.paymentStatus !== "paid" && (
+              <div style={{ textAlign: "left", borderTop: "1px solid #f1f5f9", paddingTop: 18 }}>
+                <b style={{ fontSize: 14, color: "#0f172a", display: "block", marginBottom: 4 }}>Pay via Shop UPI</b>
+                <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 14px", lineHeight: 1.5 }}>
+                  Scan the shopkeeper's personal UPI QR code or open your payment app:
+                </p>
+
+                {/* Personal UPI QR Box */}
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 18, textAlign: "center", marginBottom: 14 }}>
+                  <div style={{ display: "inline-block", background: "#ffffff", padding: 12, borderRadius: 12, border: "1px solid #e2e8f0" }}>
+                    <QRCodeSVG value={upiLink} size={180} level="M" />
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                    Scan with GPay, PhonePe, Paytm, or BHIM
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f1f5f9", padding: "10px 14px", borderRadius: 8, marginBottom: 14 }}>
+                  <div>
+                    <small style={{ display: "block", fontSize: 10, color: "#64748b", fontWeight: 700 }}>SHOP UPI ID</small>
+                    <b style={{ fontSize: 13, color: "#0f172a" }}>{shop.upiId}</b>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyUpiId}
+                    style={{ border: "1px solid #cbd5e1", background: "#fff", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    <Copy size={12} /> {copiedUpi ? "Copied" : "Copy"}
+                  </button>
+                </div>
+
+                {upiLink && (
+                  <a
+                    href={upiLink}
+                    style={{ display: "block", textAlign: "center", background: "#079c73", color: "#fff", padding: "12px", borderRadius: 8, fontWeight: 700, fontSize: 14, textDecoration: "none", marginBottom: 14 }}
+                  >
+                    Open UPI App ({money(order.amountPaise)})
+                  </a>
+                )}
+
+                {/* Report payment ref */}
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <input
+                    type="text"
+                    value={claimReference}
+                    onChange={(e) => setClaimReference(e.target.value)}
+                    placeholder="Enter UPI Reference / UTR (Optional)"
+                    style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12, outline: "none" }}
+                  />
+                  <button
+                    type="button"
+                    disabled={claiming}
+                    onClick={reportPayment}
+                    style={{ background: "#0f172a", color: "#fff", padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer" }}
+                  >
+                    {claiming ? "Sending..." : "I have paid"}
+                  </button>
+                </div>
+                {claimMessage && <div style={{ color: "#16a34a", fontSize: 12, marginTop: 8, fontWeight: 600 }}>{claimMessage}</div>}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => { setOrder(null); setUploads([]); setQuote(null); }}
+              style={{ marginTop: 22, background: "transparent", border: "none", color: "#079c73", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+            >
+              ← Place another print order
+            </button>
           </div>
-        </section>
+        ) : (
+          <>
+            {/* STEP 1: UPLOAD FILES */}
+            <section
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: "20px 22px",
+                marginBottom: 16,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: "50%",
+                    background: "#079c73",
+                    color: "#ffffff",
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  1
+                </span>
+                <b style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Upload files</b>
+                <span style={{ color: "#94a3b8", fontSize: 12, fontWeight: 500, marginLeft: 2 }}>max 10</span>
+              </div>
 
-        {(shop.collectCustomerName || shop.collectCustomerMobile) && <section className="customer-order-card customer-contact-fields"><h2>Contact details</h2>{shop.collectCustomerName && <label className="customer-field">Your name<input maxLength={100} value={customerName} onChange={(event) => setCustomerName(event.target.value)} /></label>}{shop.collectCustomerMobile && <label className="customer-field">Mobile number<input type="tel" maxLength={20} value={customerMobile} onChange={(event) => setCustomerMobile(event.target.value)} /></label>}</section>}
+              {/* Document vs Photo Tab Switcher */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                {/* Tab 1: Document */}
+                <button
+                  type="button"
+                  onClick={() => changeMode("document")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: mode === "document" ? "1.5px solid #079c73" : "1px solid #e2e8f0",
+                    background: mode === "document" ? "#f0fdf4" : "#ffffff",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      background: mode === "document" ? "#dcfce7" : "#f1f5f9",
+                      color: mode === "document" ? "#079c73" : "#64748b",
+                      display: "grid",
+                      placeItems: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <FileText size={18} />
+                  </div>
+                  <div>
+                    <b style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Document</b>
+                    <small style={{ color: "#64748b", fontSize: 11 }}>PDF</small>
+                  </div>
+                </button>
 
-        <section className="customer-order-card">
-          <SectionHeading number={paymentStep} title="Payment" />
-          <div className="payment-method-list">
-            <span className="customer-option-label">Payment method</span>
-            {shop.upiId && <button type="button" className={`payment-method-card${paymentMethod === "upi" ? " selected" : ""}`} aria-pressed={paymentMethod === "upi"} onClick={() => setSelectedPayment("upi")}><span className="payment-method-icon"><Smartphone size={19} /></span><span className="payment-method-copy"><b>Direct UPI</b><small>Pay the shop after placing your order</small></span><span className="payment-method-check"><Check size={13} /></span></button>}
-            {shop.cashEnabled && <button type="button" className={`payment-method-card${paymentMethod === "cash" ? " selected" : ""}`} aria-pressed={paymentMethod === "cash"} onClick={() => setSelectedPayment("cash")}><span className="payment-method-icon cash"><Store size={18} /></span><span className="payment-method-copy"><b>Cash at counter</b><small>Pay at pickup</small></span><span className="payment-method-check"><Check size={13} /></span></button>}
-            {!shop.upiId && !shop.cashEnabled && <p className="customer-alert">This shop has not enabled a payment method yet.</p>}
-            <small className="payment-security-note"><ShieldCheck size={13} /> Payments go directly to the shop. Printly does not process them.</small>
-          </div>
-        </section>
+                {/* Tab 2: Photo / Image */}
+                <button
+                  type="button"
+                  onClick={() => changeMode("photo")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: mode === "photo" ? "1.5px solid #079c73" : "1px solid #e2e8f0",
+                    background: mode === "photo" ? "#f0fdf4" : "#ffffff",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      background: mode === "photo" ? "#dcfce7" : "#f1f5f9",
+                      color: mode === "photo" ? "#079c73" : "#64748b",
+                      display: "grid",
+                      placeItems: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <FileImage size={18} />
+                  </div>
+                  <div>
+                    <b style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Photo / Image</b>
+                    <small style={{ color: "#64748b", fontSize: 11 }}>JPG, PNG, WEBP</small>
+                  </div>
+                </button>
+              </div>
 
-        {quote?.discountPaise ? <p className="customer-discount-note">Bulk discount ({quote.discountPercent}%): −{money(quote.discountPaise)}</p> : null}
-        {quoteError && <div className="customer-alert" role="alert">{quoteError}</div>}
-        {error && <div className="customer-alert" role="alert">{error}</div>}
-        <p className="customer-retention-note"><ShieldCheck size={14} /> Files are used only for printing and unprinted uploads are deleted after {shop.fileRetentionHours < 1 ? `${Math.round(shop.fileRetentionHours * 60)} minutes` : `${shop.fileRetentionHours} ${shop.fileRetentionHours === 1 ? "hour" : "hours"}`}.</p>
+              {/* Upload Dropzone */}
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                accept={mode === "document" ? "application/pdf,.pdf" : "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"}
+                style={{ display: "none" }}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                  const selected = Array.from(event.target.files ?? []);
+                  event.target.value = "";
+                  void uploadFiles(selected);
+                }}
+              />
+              <div
+                onClick={() => fileInput.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void uploadFiles(Array.from(e.dataTransfer.files));
+                }}
+                style={{
+                  border: "1.5px dashed #94a3b8",
+                  borderRadius: 14,
+                  padding: "36px 20px",
+                  textAlign: "center",
+                  cursor: "pointer",
+                  background: "#f8fafc",
+                  transition: "border-color 0.15s, background 0.15s",
+                }}
+              >
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    background: "#dcfce7",
+                    color: "#079c73",
+                    display: "grid",
+                    placeItems: "center",
+                    margin: "0 auto 10px",
+                  }}
+                >
+                  {uploading ? <LoaderCircle className="spin" size={22} /> : <Upload size={20} />}
+                </div>
+                <b style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", display: "block" }}>
+                  {uploading ? "Uploading files..." : "Choose files"}
+                </b>
+                <small style={{ color: "#64748b", fontSize: 12, marginTop: 4, display: "block" }}>
+                  {mode === "document" ? "PDF · up to 25.0 MB · or drag them here" : "JPG, PNG, WEBP · up to 25.0 MB · or drag them here"}
+                </small>
+              </div>
+
+              {/* File List */}
+              {uploads.length > 0 && (
+                <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {uploads.map((file) => (
+                    <div
+                      key={file.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #e2e8f0",
+                        background: "#ffffff",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        {file.kind === "photo" && file.previewUrl ? (
+                          <img src={file.previewUrl} alt="" style={{ width: 34, height: 34, borderRadius: 6, objectFit: "cover" }} />
+                        ) : (
+                          <div style={{ width: 34, height: 34, borderRadius: 6, background: "#ecfdf5", color: "#079c73", display: "grid", placeItems: "center" }}>
+                            <FileText size={16} />
+                          </div>
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <b style={{ display: "block", fontSize: 12, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>
+                            {file.name}
+                          </b>
+                          <small style={{ color: "#64748b", fontSize: 11 }}>
+                            {file.kind === "photo" ? "Photo" : `${file.pageCount} page${file.pageCount === 1 ? "" : "s"}`} · {(file.sizeBytes / 1024 / 1024).toFixed(1)} MB
+                          </small>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeUpload(file.id)}
+                        disabled={Boolean(removingId)}
+                        style={{ border: "none", background: "transparent", color: "#94a3b8", cursor: "pointer", padding: 4 }}
+                      >
+                        {removingId === file.id ? <LoaderCircle className="spin" size={14} /> : <X size={16} />}
+                      </button>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#079c73", marginTop: 4 }}>
+                    Total: {totalSourcePages} page{totalSourcePages === 1 ? "" : "s"} across {uploads.length} file{uploads.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* PHOTO LAYOUT SECTION (If in photo mode) */}
+            {mode === "photo" && (
+              <section
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 16,
+                  padding: "20px 22px",
+                  marginBottom: 16,
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <b style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Photos per page</b>
+                  <span style={{ color: "#94a3b8", fontSize: 12 }}>Fewer pages, lower cost</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                  {layouts.map((l) => {
+                    const isSelected = options.photoLayout === l.value;
+                    return (
+                      <button
+                        key={l.value}
+                        type="button"
+                        onClick={() => updateOptions({ photoLayout: l.value })}
+                        style={{
+                          padding: "10px 8px",
+                          borderRadius: 10,
+                          border: isSelected ? "1.5px solid #079c73" : "1px solid #e2e8f0",
+                          background: isSelected ? "#f0fdf4" : "#ffffff",
+                          cursor: "pointer",
+                          textAlign: "center",
+                        }}
+                      >
+                        <b style={{ fontSize: 13, display: "block", color: isSelected ? "#079c73" : "#0f172a" }}>{l.shortLabel}</b>
+                        <small style={{ fontSize: 10, color: "#64748b" }}>{l.label.split(" ")[0]} photo</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* STEP 2: PRINT OPTIONS */}
+            <section
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: "20px 22px",
+                marginBottom: 16,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: "50%",
+                    background: "#079c73",
+                    color: "#ffffff",
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  2
+                </span>
+                <b style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Print options</b>
+              </div>
+
+              {/* Paper size */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                  Paper size
+                </label>
+                {shop.enabledPaperSizes.length > 1 ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {shop.enabledPaperSizes.map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => updateOptions({ paperSize: size })}
+                        style={{
+                          flex: 1,
+                          padding: "10px",
+                          borderRadius: 10,
+                          border: options.paperSize === size ? "1.5px solid #079c73" : "1px solid #e2e8f0",
+                          background: options.paperSize === size ? "#f0fdf4" : "#ffffff",
+                          color: options.paperSize === size ? "#079c73" : "#0f172a",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 10,
+                      padding: "10px",
+                      textAlign: "center",
+                      fontWeight: 700,
+                      color: "#079c73",
+                      fontSize: 13,
+                      background: "#ffffff",
+                    }}
+                  >
+                    {options.paperSize || "A4"}
+                  </div>
+                )}
+              </div>
+
+              {/* Colour */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                  Colour
+                </label>
+                <div
+                  style={{
+                    background: "#f1f5f9",
+                    padding: 4,
+                    borderRadius: 10,
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 4,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => updateOptions({ colour: false })}
+                    style={{
+                      border: !options.colour ? "1px solid #e2e8f0" : "none",
+                      background: !options.colour ? "#ffffff" : "transparent",
+                      color: !options.colour ? "#079c73" : "#64748b",
+                      borderRadius: 8,
+                      padding: "9px",
+                      fontWeight: !options.colour ? 700 : 600,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      boxShadow: !options.colour ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+                    }}
+                  >
+                    B&W
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!shop.colourEnabled}
+                    onClick={() => updateOptions({ colour: true })}
+                    style={{
+                      border: options.colour ? "1px solid #e2e8f0" : "none",
+                      background: options.colour ? "#ffffff" : "transparent",
+                      color: options.colour ? "#079c73" : shop.colourEnabled ? "#64748b" : "#94a3b8",
+                      borderRadius: 8,
+                      padding: "9px",
+                      fontWeight: options.colour ? 700 : 600,
+                      fontSize: 13,
+                      cursor: shop.colourEnabled ? "pointer" : "not-allowed",
+                      boxShadow: options.colour ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+                    }}
+                  >
+                    Colour
+                  </button>
+                </div>
+              </div>
+
+              {/* Sides (Single vs Both) */}
+              {!isPhotoOrder && (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                    Sides
+                  </label>
+                  <div
+                    style={{
+                      background: "#f1f5f9",
+                      padding: 4,
+                      borderRadius: 10,
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 4,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => updateOptions({ duplex: false })}
+                      style={{
+                        border: !options.duplex ? "1px solid #e2e8f0" : "none",
+                        background: !options.duplex ? "#ffffff" : "transparent",
+                        color: !options.duplex ? "#079c73" : "#64748b",
+                        borderRadius: 8,
+                        padding: "9px",
+                        fontWeight: !options.duplex ? 700 : 600,
+                        fontSize: 13,
+                        cursor: "pointer",
+                        boxShadow: !options.duplex ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+                      }}
+                    >
+                      Single side
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!shop.duplexEnabled}
+                      onClick={() => updateOptions({ duplex: true })}
+                      style={{
+                        border: options.duplex ? "1px solid #e2e8f0" : "none",
+                        background: options.duplex ? "#ffffff" : "transparent",
+                        color: options.duplex ? "#079c73" : shop.duplexEnabled ? "#64748b" : "#94a3b8",
+                        borderRadius: 8,
+                        padding: "9px",
+                        fontWeight: options.duplex ? 700 : 600,
+                        fontSize: 13,
+                        cursor: shop.duplexEnabled ? "pointer" : "not-allowed",
+                        boxShadow: options.duplex ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+                      }}
+                    >
+                      Both sides
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Copies Stepper */}
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                  Copies
+                </label>
+                <div
+                  style={{
+                    background: "#f1f5f9",
+                    borderRadius: 10,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: 3,
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={options.copies <= 1}
+                    onClick={() => updateOptions({ copies: Math.max(1, options.copies - 1) })}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      border: "none",
+                      background: "transparent",
+                      color: options.copies <= 1 ? "#94a3b8" : "#0f172a",
+                      fontSize: 18,
+                      fontWeight: 700,
+                      cursor: options.copies <= 1 ? "default" : "pointer",
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <span style={{ padding: "0 20px", fontWeight: 800, fontSize: 14, color: "#0f172a" }}>
+                    {options.copies}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={options.copies >= shop.maxCopies}
+                    onClick={() => updateOptions({ copies: Math.min(shop.maxCopies, options.copies + 1) })}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      border: "none",
+                      background: "transparent",
+                      color: "#0f172a",
+                      fontSize: 18,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* STEP 3: PAYMENT */}
+            <section
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: "20px 22px",
+                marginBottom: 20,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: "50%",
+                    background: "#079c73",
+                    color: "#ffffff",
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  3
+                </span>
+                <b style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Payment</b>
+              </div>
+
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 8 }}>
+                Payment method
+              </label>
+
+              {/* Option 1: UPI */}
+              {shop.upiId && (
+                <div
+                  onClick={() => {
+                    setSelectedPayment("upi");
+                    setUpiModalOpen(true);
+                  }}
+                  style={{
+                    border: selectedPayment === "upi" ? "1.5px solid #079c73" : "1px solid #e2e8f0",
+                    background: selectedPayment === "upi" ? "#ffffff" : "#ffffff",
+                    borderRadius: 12,
+                    padding: "12px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                    cursor: "pointer",
+                    boxShadow: selectedPayment === "upi" ? "0 2px 6px rgba(7, 156, 115, 0.08)" : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 10,
+                        background: "#079c73",
+                        color: "#ffffff",
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      <Smartphone size={20} />
+                    </div>
+                    <div>
+                      <b style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+                        UPI
+                      </b>
+                      <small style={{ color: "#64748b", fontSize: 11 }}>
+                        Google Pay · PhonePe · Paytm · BHIM
+                      </small>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPayment("upi");
+                        setUpiModalOpen(true);
+                      }}
+                      style={{
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        color: "#0f172a",
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <QrCode size={12} /> QR
+                    </button>
+
+                    {selectedPayment === "upi" ? (
+                      <div
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: "50%",
+                          background: "#079c73",
+                          color: "#ffffff",
+                          display: "grid",
+                          placeItems: "center",
+                        }}
+                      >
+                        <Check size={13} strokeWidth={3} />
+                      </div>
+                    ) : (
+                      <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #cbd5e1" }} />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Option 2: Cash at counter */}
+              {shop.cashEnabled && (
+                <div
+                  onClick={() => setSelectedPayment("cash")}
+                  style={{
+                    border: selectedPayment === "cash" ? "1.5px solid #079c73" : "1px solid #e2e8f0",
+                    background: selectedPayment === "cash" ? "#ffffff" : "#ffffff",
+                    borderRadius: 12,
+                    padding: "12px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    boxShadow: selectedPayment === "cash" ? "0 2px 6px rgba(7, 156, 115, 0.08)" : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 10,
+                        background: "#fef3c7",
+                        color: "#d97706",
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      <Store size={20} />
+                    </div>
+                    <div>
+                      <b style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+                        Cash at counter
+                      </b>
+                      <span
+                        style={{
+                          background: "#f1f5f9",
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "#64748b",
+                        }}
+                      >
+                        Pay at pickup
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedPayment === "cash" ? (
+                    <div
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: "50%",
+                        background: "#079c73",
+                        color: "#ffffff",
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      <Check size={13} strokeWidth={3} />
+                    </div>
+                  ) : (
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #cbd5e1" }} />
+                  )}
+                </div>
+              )}
+
+              {/* Secure guarantee text */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  color: "#079c73",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  marginTop: 14,
+                }}
+              >
+                <ShieldCheck size={14} />
+                <span>100% safe & secure payment</span>
+              </div>
+            </section>
+
+            {/* Privacy footer */}
+            <div style={{ textAlign: "center", color: "#64748b", fontSize: 11, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+              <Lock size={12} />
+              <span>Files are used only for printing — auto-deleted afterwards</span>
+            </div>
+            <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 11, fontWeight: 600, marginBottom: 40 }}>
+              V1.0.2
+            </div>
+          </>
+        )}
       </main>
-      <footer className="customer-footer"><span>Printly · Secure order</span><span>Direct payment to {shop.displayName}</span></footer>
-      <div className="customer-action-bar"><div className="customer-action-inner"><div className="customer-action-total">{quote ? <><b>{money(quote.amountPaise)}</b><small>{quote.billableUnits} {quote.unit === "pages" ? "page" : "sheet"}{quote.billableUnits === 1 ? "" : "s"} × {options.copies} {options.copies === 1 ? "copy" : "copies"}</small></> : <span>{uploads.length ? quoteError || "Calculating your price…" : "Upload a file first"}</span>}</div><button type="button" disabled={!quote || submitting || uploading || (!shop.upiId && !shop.cashEnabled)} onClick={() => void placeOrder(paymentMethod)}>{submitting ? "Placing order…" : paymentMethod === "upi" ? "Pay now" : "Place order"}<span aria-hidden="true">→</span></button></div></div>
+
+      {/* FIXED BOTTOM ACTION BAR */}
+      {!order && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: "#ffffff",
+            borderTop: "1px solid #e2e8f0",
+            padding: "12px 18px",
+            zIndex: 40,
+            boxShadow: "0 -4px 16px rgba(0,0,0,0.04)",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 520,
+              margin: "0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            {/* Price / Quote Info */}
+            <div>
+              {uploads.length === 0 ? (
+                <span style={{ color: "#64748b", fontSize: 13, fontWeight: 500 }}>
+                  Upload a file first
+                </span>
+              ) : quote ? (
+                <div>
+                  <b style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", display: "block", lineHeight: 1 }}>
+                    {money(quote.amountPaise)}
+                  </b>
+                  <small style={{ color: "#64748b", fontSize: 11, marginTop: 3, display: "block" }}>
+                    {quote.billableUnits} {quote.unit === "pages" ? "page" : "sheet"}{quote.billableUnits === 1 ? "" : "s"} × {options.copies} {options.copies === 1 ? "copy" : "copies"}
+                  </small>
+                </div>
+              ) : (
+                <span style={{ color: "#64748b", fontSize: 13, fontWeight: 500 }}>
+                  {quoteError || "Calculating price..."}
+                </span>
+              )}
+            </div>
+
+            {/* Pay Now Button */}
+            <button
+              type="button"
+              disabled={!quote || submitting || uploading}
+              onClick={() => void placeOrder(effectivePayment)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "12px 24px",
+                borderRadius: 999,
+                background: !quote || submitting || uploading ? "#94a3b8" : "#079c73",
+                color: "#ffffff",
+                border: "none",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: !quote || submitting || uploading ? "not-allowed" : "pointer",
+                boxShadow: quote && !submitting ? "0 4px 12px rgba(7, 156, 115, 0.3)" : "none",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span>{submitting ? "Processing..." : effectivePayment === "upi" ? "Pay now" : "Place order"}</span>
+              <span style={{ fontSize: 16 }}>→</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SHOPKEEPER PERSONAL UPI PAYMENT MODAL */}
+      {upiModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.7)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            zIndex: 100,
+            backdropFilter: "blur(4px)",
+          }}
+          onClick={() => setUpiModalOpen(false)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 20,
+              padding: "24px 22px",
+              maxWidth: 420,
+              width: "100%",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
+              textAlign: "center",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div style={{ textAlign: "left" }}>
+                <b style={{ fontSize: 16, color: "#0f172a", display: "block" }}>Pay via Shop UPI</b>
+                <span style={{ fontSize: 11, color: "#64748b" }}>Direct payment to {shop.displayName}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUpiModalOpen(false)}
+                style={{ border: "none", background: "transparent", color: "#64748b", cursor: "pointer", padding: 4 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Amount Banner */}
+            <div style={{ background: "#f8fafc", borderRadius: 12, padding: "12px", border: "1px solid #e2e8f0", marginBottom: 16 }}>
+              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>
+                {order ? "Amount Due" : quote ? "Order Total" : "Shop Payment QR"}
+              </span>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#079c73", margin: "2px 0" }}>
+                {order ? money(order.amountPaise) : quote ? money(quote.amountPaise) : "Scan to Pay"}
+              </div>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                {order ? `Order #${order.code}` : quote ? `${quote.billableUnits} ${quote.unit} · ${options.copies} copy` : "Personal Shopkeeper UPI QR"}
+              </span>
+            </div>
+
+            {/* Shopkeeper Personal UPI QR Code */}
+            <div style={{ display: "inline-block", background: "#ffffff", padding: 12, borderRadius: 14, border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", marginBottom: 12 }}>
+              <QRCodeSVG value={upiLink} size={180} level="M" />
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, marginBottom: 14 }}>
+              Scan with GPay, PhonePe, Paytm, or BHIM
+            </div>
+
+            {/* Shopkeeper UPI ID */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f1f5f9", padding: "10px 14px", borderRadius: 10, marginBottom: 14, textAlign: "left" }}>
+              <div>
+                <small style={{ display: "block", fontSize: 10, color: "#64748b", fontWeight: 700 }}>SHOPKEEPER UPI ID</small>
+                <b style={{ fontSize: 13, color: "#0f172a" }}>{shop.upiId}</b>
+              </div>
+              <button
+                type="button"
+                onClick={copyUpiId}
+                style={{
+                  border: "1px solid #cbd5e1",
+                  background: "#ffffff",
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <Copy size={12} /> {copiedUpi ? "Copied" : "Copy"}
+              </button>
+            </div>
+
+            {/* Direct App Launch Button */}
+            {upiLink && (
+              <a
+                href={upiLink}
+                style={{
+                  display: "block",
+                  background: "#079c73",
+                  color: "#ffffff",
+                  padding: "11px",
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  textDecoration: "none",
+                  marginBottom: 12,
+                }}
+              >
+                Open UPI App {currentAmount > 0 ? `(${money(currentAmount * 100)})` : ""}
+              </a>
+            )}
+
+            {/* Action Row */}
+            {order ? (
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  value={claimReference}
+                  onChange={(e) => setClaimReference(e.target.value)}
+                  placeholder="UTR / Ref Number (Optional)"
+                  style={{
+                    flex: 1,
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    fontSize: 12,
+                    outline: "none",
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={claiming}
+                  onClick={reportPayment}
+                  style={{
+                    background: "#0f172a",
+                    color: "#ffffff",
+                    padding: "9px 16px",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    border: "none",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {claiming ? "Saving..." : "I Have Paid"}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={!quote || submitting || uploading}
+                onClick={() => void placeOrder("upi")}
+                style={{
+                  width: "100%",
+                  background: !quote || submitting ? "#94a3b8" : "#079c73",
+                  color: "#ffffff",
+                  padding: "11px",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: !quote || submitting ? "not-allowed" : "pointer",
+                }}
+              >
+                {submitting ? "Processing..." : quote ? `Pay ${money(quote.amountPaise)} & Place Order` : "Upload files first to place order"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
-}
-
-function customerOrderStatus(status: string, paymentStatus: string): string {
-  if (status === "printed") return "Ready for pickup";
-  if (status === "printing") return "Legacy print status · contact the shop";
-  if (status === "queued") return "Payment confirmed · awaiting manual fulfillment";
-  if (status === "needs_approval") return "Payment confirmed · waiting for shop approval";
-  if (status === "failed") return "Previous fulfillment issue · please contact the shop.";
-  if (status === "rejected") return "The shop could not accept this order. Please contact the shop.";
-  if (status === "expired") return "This order expired. Please contact the shop.";
-  if (status === "cancelled") return "This order was cancelled.";
-  if (paymentStatus === "paid") return "Payment confirmed by the shop";
-  if (status === "awaiting_cash") return "Awaiting cash at the counter";
-  return "Awaiting shop payment verification";
-}
-
-function CustomerHeader() {
-  return (
-    <header className="customer-header">
-      <div className="customer-header-inner">
-        <a className="customer-header-brand" href="/"><span><QrCode size={19} /></span><b>Printly</b></a>
-        <div className="customer-secure-label"><ShieldCheck size={15} /> Secure</div>
-      </div>
-    </header>
-  );
-}
-
-function SectionHeading({ number, title, hint }: { number: number; title: string; hint?: string }) {
-  return <div className="customer-section-heading"><span>{number}</span><b>{title}</b>{hint && <small>{hint}</small>}</div>;
 }

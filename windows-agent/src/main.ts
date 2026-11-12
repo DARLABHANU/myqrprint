@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import { readFile, writeFile, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { pairAgentResponseSchema, leasedPrintJobSchema, type DiscoveredPrinter } from '@printly/contracts';
+
+const execFileAsync = promisify(execFile);
 
 const VERSION = app.getVersion();
 const credentialsPath = () => join(app.getPath('userData'), 'connection.bin');
@@ -17,6 +21,7 @@ let isQuitting = false;
 const pendingPrints = new Map<string, { window: BrowserWindow; printerName: string; options: ReturnType<typeof leasedPrintJobSchema.parse>['options']; resolve: () => void; reject: (error: Error) => void }>();
 const productionWebUrl = 'https://myqrprint.vercel.app';
 function isAllowedOrigin(origin: string): boolean {
+  if (!origin || origin === 'null' || origin.startsWith('file:') || origin.startsWith('vscode-webview:')) return true;
   if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin)) return true;
   try {
     const host = new URL(origin).hostname;
@@ -42,22 +47,70 @@ async function api(path: string, init: RequestInit = {}) {
   }
   return response.status === 204 ? null : response.json();
 }
+async function getWindowsPrintersFallback(): Promise<DiscoveredPrinter[]> {
+  if (process.platform !== 'win32') return [];
+  try {
+    const psPath = process.env.SystemRoot
+      ? join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      : 'powershell.exe';
+    const script = `Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress`;
+    const { stdout } = await execFileAsync(psPath, ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 6000 });
+    const trimmed = stdout.trim();
+    if (!trimmed) return [];
+    const parsed = JSON.parse(trimmed);
+    const list: Array<{ Name?: string; Default?: boolean }> = Array.isArray(parsed) ? parsed : [parsed];
+    return list
+      .filter((p) => p && typeof p.Name === 'string' && p.Name.trim().length > 0)
+      .map((p) => {
+        const name = p.Name!.trim();
+        const isVirtualPdf = name.toLowerCase().includes('pdf') || name.toLowerCase().includes('onenote') || name.toLowerCase().includes('xps');
+        return {
+          systemName: name,
+          displayName: name,
+          isDefault: Boolean(p.Default),
+          capabilities: {
+            paperSizes: ['A3', 'A4', 'A5', 'Legal'],
+            supportsColour: true,
+            supportsDuplex: true,
+          },
+        } satisfies DiscoveredPrinter;
+      });
+  } catch (err) {
+    console.warn('[AGENT] PowerShell fallback printer discovery:', err);
+    return [];
+  }
+}
+
 async function discoverPrinters(): Promise<DiscoveredPrinter[]> {
-  const printers = await mainWindow?.webContents.getPrintersAsync() ?? [];
-  return printers.map((printer) => {
-    const options = printer.options as Record<string, string | undefined>;
-    const supported = (options['paper-sizes'] ?? options['media-supported'] ?? 'iso_a4_210x297mm').toLowerCase();
-    return {
-      systemName: printer.name,
-      displayName: printer.displayName || printer.name,
-      isDefault: /true|1/i.test(String(options['is-default'] ?? options.isDefault ?? '')),
-      capabilities: {
-        paperSizes: (['A3','A4','A5','Legal'] as const).filter((size) => supported.includes(size.toLowerCase()) || (size === 'A4' && supported.includes('210x297'))).length ? (['A3','A4','A5','Legal'] as const).filter((size) => supported.includes(size.toLowerCase()) || (size === 'A4' && supported.includes('210x297'))) : ['A4'],
-        supportsColour: /true|color|colour/i.test(options.color ?? options['print-color-mode'] ?? ''),
-        supportsDuplex: /duplex|two-sided/i.test(options['sides'] ?? options.duplex ?? ''),
-      },
-    } satisfies DiscoveredPrinter;
-  });
+  let list: DiscoveredPrinter[] = [];
+  try {
+    const electronPrinters = await mainWindow?.webContents.getPrintersAsync() ?? [];
+    if (electronPrinters.length > 0) {
+      list = electronPrinters.map((printer) => {
+        const options = (printer.options ?? {}) as Record<string, string | undefined>;
+        const supported = (options['paper-sizes'] ?? options['media-supported'] ?? 'iso_a4_210x297mm').toLowerCase();
+        const isVirtualPdf = printer.name.toLowerCase().includes('pdf') || printer.name.toLowerCase().includes('onenote');
+        const detectedPaperSizes = (['A3','A4','A5','Legal'] as const).filter((size) => supported.includes(size.toLowerCase()) || (size === 'A4' && supported.includes('210x297')));
+        return {
+          systemName: printer.name,
+          displayName: printer.displayName || printer.name,
+          isDefault: Boolean(printer.isDefault || /true|1/i.test(String(options['is-default'] ?? options.isDefault ?? ''))),
+          capabilities: {
+            paperSizes: isVirtualPdf || detectedPaperSizes.length === 0 ? ['A3', 'A4', 'A5', 'Legal'] : detectedPaperSizes,
+            supportsColour: isVirtualPdf || /true|color|colour/i.test(options.color ?? options['print-color-mode'] ?? ''),
+            supportsDuplex: isVirtualPdf || /duplex|two-sided/i.test(options['sides'] ?? options.duplex ?? ''),
+          },
+        } satisfies DiscoveredPrinter;
+      });
+    }
+  } catch (err) {
+    console.warn('[AGENT] Electron getPrintersAsync error:', err);
+  }
+
+  if (list.length === 0 && process.platform === 'win32') {
+    list = await getWindowsPrintersFallback();
+  }
+  return list;
 }
 async function heartbeat() {
   const printers = await discoverPrinters();
@@ -72,7 +125,7 @@ async function printJob(job: ReturnType<typeof leasedPrintJobSchema.parse>) {
     const data = Buffer.from(await response.arrayBuffer()).toString('base64');
     files.push({ name: file.name, mediaType: file.mediaType, data });
   }
-  const printWindow = new BrowserWindow({ show: false, webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  const printWindow = new BrowserWindow({ show: false, webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
   const printId = randomUUID();
   try {
     const rendered = new Promise<void>((resolve, reject) => {
@@ -102,10 +155,43 @@ async function poll() {
 }
 function startPolling() { if (pollTimer) clearInterval(pollTimer); void poll(); pollTimer = setInterval(() => void poll(), 20_000); }
 
+declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
+declare const MAIN_WINDOW_VITE_NAME: string | undefined;
+
 function createWindow() {
-  mainWindow = new BrowserWindow({ title: 'Printly', width: 1320, height: 900, minWidth: 980, minHeight: 680, backgroundColor: '#f4f7fa', autoHideMenuBar: true, webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  mainWindow = new BrowserWindow({
+    title: 'Printly',
+    width: 1320,
+    height: 900,
+    minWidth: 980,
+    minHeight: 680,
+    backgroundColor: '#f4f7fa',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
   const webUrl = process.env.PRINTLY_WEB_URL ?? (app.isPackaged ? productionWebUrl : 'http://localhost:5173');
   void mainWindow.loadURL(webUrl);
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (connection) {
+      void heartbeat().catch((err) => console.warn('[AGENT] Post-load heartbeat failed:', err));
+    }
+  });
+
+  mainWindow.webContents.on('did-fail-load', () => {
+    // If client web server on 5173 is still compiling/starting, retry after 1.5s
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        void mainWindow.loadURL(webUrl);
+      }
+    }, 1500);
+  });
   mainWindow.webContents.on('will-navigate', (event, url) => {
     let origin = '';
     try { origin = new URL(url).origin; } catch { /* blocked below */ }
@@ -136,7 +222,40 @@ app.whenReady().then(async () => {
 });
 app.on('before-quit', () => { isQuitting = true; });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && isQuitting) app.quit(); });
-ipcMain.handle('agent:status', async () => ({ connected: Boolean(connection), deviceName: connection?.deviceName, shopName: connection?.shopName, agentVersion: VERSION, printers: connection ? (await discoverPrinters()).length : 0 }));
+ipcMain.handle('agent:status', async () => {
+  const printersList = await discoverPrinters();
+  return {
+    connected: Boolean(connection),
+    deviceName: connection?.deviceName || hostname(),
+    shopName: connection?.shopName,
+    apiUrl: connection?.apiUrl,
+    agentVersion: VERSION,
+    printersCount: printersList.length,
+    printers: printersList,
+  };
+});
+ipcMain.handle('agent:refresh', async () => {
+  if (connection) {
+    try { await heartbeat(); } catch (err) { emitStatus({ error: err instanceof Error ? err.message : 'Heartbeat failed.' }); }
+  }
+  const printersList = await discoverPrinters();
+  return {
+    connected: Boolean(connection),
+    deviceName: connection?.deviceName || hostname(),
+    shopName: connection?.shopName,
+    apiUrl: connection?.apiUrl,
+    agentVersion: VERSION,
+    printersCount: printersList.length,
+    printers: printersList,
+  };
+});
+ipcMain.handle('agent:open-external', async (_event, url: string) => {
+  if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+    await shell.openExternal(url);
+    return true;
+  }
+  return false;
+});
 ipcMain.handle('agent:pair', async (event, input: { code: string; apiUrl: string }) => {
   let senderOrigin = '';
   try { senderOrigin = new URL(event.sender.getURL()).origin; } catch { /* reject below */ }
@@ -144,8 +263,7 @@ ipcMain.handle('agent:pair', async (event, input: { code: string; apiUrl: string
   const apiUrl = input.apiUrl.trim().replace(/\/+$/, '');
   let parsedApiUrl: URL;
   try { parsedApiUrl = new URL(apiUrl); } catch { throw new Error('Enter the Printly backend URL (https://…).'); }
-  if (parsedApiUrl.protocol !== 'https:' && !(parsedApiUrl.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsedApiUrl.hostname))) throw new Error('Use a secure HTTPS Printly server URL.');
-  if (parsedApiUrl.protocol === 'https:' && !parsedApiUrl.hostname.endsWith('onrender.com') && parsedApiUrl.hostname !== 'printly-api.onrender.com') throw new Error('Use the official Printly server address.');
+  if (parsedApiUrl.protocol !== 'https:' && !(parsedApiUrl.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsedApiUrl.hostname))) throw new Error('Use a secure HTTPS Printly server URL or localhost.');
   const response = await fetch(new URL('/api/agent/pair', apiUrl), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pairingCode: input.code, deviceName: hostname(), agentVersion: VERSION }) });
   const body = await response.json(); if (!response.ok) throw new Error(body.error ?? 'Could not pair this computer.');
   const paired = pairAgentResponseSchema.parse(body);
@@ -161,5 +279,18 @@ ipcMain.handle('agent:print-ready', async (event, input: { id: string; error?: s
   if (!pending || pending.window.webContents.id !== event.sender.id) return;
   if (input.error) { pending.reject(new Error(input.error)); return; }
   const { options } = pending;
-  pending.window.webContents.print({ silent: true, deviceName: pending.printerName, color: options.colour, copies: options.copies, landscape: options.orientation === 'landscape', duplexMode: options.duplex ? 'longEdge' : 'simplex', pageSize: options.paperSize as 'A3'|'A4'|'A5'|'Legal', printBackground: true }, (success, failureReason) => success ? pending.resolve() : pending.reject(new Error(failureReason || 'Windows could not submit the print job.')));
+  const isVirtualPdf = pending.printerName.toLowerCase().includes('pdf') || pending.printerName.toLowerCase().includes('onenote');
+  pending.window.webContents.print(
+    {
+      silent: !isVirtualPdf,
+      deviceName: pending.printerName,
+      color: options.colour,
+      copies: options.copies,
+      landscape: options.orientation === 'landscape',
+      duplexMode: options.duplex ? 'longEdge' : 'simplex',
+      pageSize: options.paperSize as 'A3'|'A4'|'A5'|'Legal',
+      printBackground: true,
+    },
+    (success, failureReason) => (success ? pending.resolve() : pending.reject(new Error(failureReason || 'Windows could not submit the print job.')))
+  );
 });

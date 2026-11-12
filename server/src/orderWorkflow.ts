@@ -28,10 +28,10 @@ export function transitionMerchantOrder(
       if (current.status !== "awaiting_payment" && current.status !== "awaiting_cash") {
         throw new Error("Payment can only be confirmed for an order awaiting payment.");
       }
-      return { ...current, status: "needs_approval", paymentStatus: "paid" };
+      return { ...current, status: "queued", paymentStatus: "paid" };
     case "approve_order":
-      if (current.status !== "needs_approval" || current.paymentStatus !== "paid") {
-        throw new Error("Only a payment-confirmed order can enter manual fulfillment.");
+      if ((current.status !== "needs_approval" && current.status !== "queued") || current.paymentStatus !== "paid") {
+        throw new Error("Only a payment-confirmed order can enter fulfillment queue.");
       }
       return { ...current, status: "queued" };
     case "mark_ready":

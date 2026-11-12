@@ -599,40 +599,12 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
   }
 
   return (
-    <div className="workspace-page">
-      <header className="workspace-header">
-        <a className="brand" href="/"><span className="brand-mark"><QrCode size={20} /></span><span>printly<span className="brand-period">.</span></span></a>
-        <div className="workspace-header-right">
-          <span className="workspace-greeting">Hi, {user?.ownerName}</span>
-          <button className="logout-button" onClick={() => void logout()} type="button"><LogOut size={15} /> Sign out</button>
-        </div>
-      </header>
-      <div className="workspace-layout">
-        <aside className="workspace-sidebar">
-          <div className="sidebar-shop"><span><Store size={18} /></span><div><b>{shop.displayName || "Your print shop"}</b><small>Shop workspace</small></div></div>
-          <div className="sidebar-label">SHOP MANAGEMENT</div>
-          <a className="sidebar-link" href="/dashboard"><Store size={17} /> Overview</a>
-          <a className="sidebar-link active" href="/dashboard/settings#shop-profile"><Settings2 size={17} /> Shop profile</a>
-          <a className="sidebar-link" href="/dashboard/settings#discounts">Discounts</a>
-          <a className="sidebar-link" href="/dashboard/settings#payment-settings">Payment settings</a>
-          <a className="sidebar-link" href="/dashboard/settings#location-lock">Location lock</a>
-          <a className="sidebar-link" href="/dashboard/settings#customer-details">Order form & privacy</a>
-          <a className="sidebar-link" href="/dashboard/settings#notifications">Notifications</a>
-          <a className="sidebar-link" href="/dashboard/orders"><Printer size={17} /> Orders</a>
-          <a className="sidebar-link" href="/dashboard/payments"><CreditCard size={17} /> Payments</a>
-          <a className="sidebar-link" href="/dashboard/reports"><CreditCard size={17} /> Reports</a>
-          <a className="sidebar-link" href="/dashboard/printers"><Printer size={17} /> Printers & routing</a>
-          <a className="sidebar-link" href="/dashboard/qr-code"><QrCode size={17} /> My QR code</a>
-          <a className="sidebar-link" href="/dashboard/subscription"><CreditCard size={17} /> Subscription</a>
-          <a className="sidebar-link" href="/dashboard/support"><CircleHelp size={17} /> Help & support</a>
-          <div className="sidebar-help"><CircleHelp size={17} /><b>Need a hand?</b><p>Set your print options and rates here, then share your customer page link.</p></div>
-        </aside>
-
-        <main className={`settings-main settings-single-page settings-section-${section}`} data-settings-section={section}>
-          <div className="settings-breadcrumb"><span>Shop</span><ChevronRight size={13} /><b>{sectionTitles[section]?.[0] ?? "Settings"}</b></div>
-          <div className="settings-title-row">
-            <div><h1>{sectionTitles[section]?.[0] ?? "Settings"}</h1><p>{sectionTitles[section]?.[1] ?? "Manage your shop preferences."}</p></div>
-            {shop.slug && <div className="shop-link-chip"><span className="online-dot" /> Your shop link <b>/p/{shop.slug}</b></div>}
+    <div className="workspace-page" style={{ background: "#f8fafc", minHeight: "100vh" }}>
+      <main className={`settings-main settings-single-page settings-section-${section}`} data-settings-section={section} style={{ maxWidth: 1080, margin: "0 auto", padding: "28px 20px 80px" }}>
+        <div className="settings-breadcrumb"><span>Shop</span><ChevronRight size={13} /><b>{sectionTitles[section]?.[0] ?? "Settings"}</b></div>
+        <div className="settings-title-row">
+          <div><h1>{sectionTitles[section]?.[0] ?? "Settings"}</h1><p>{sectionTitles[section]?.[1] ?? "Manage your shop preferences."}</p></div>
+          {shop.slug && <div className="shop-link-chip"><span className="online-dot" /> Your shop link <b>/p/{shop.slug}</b></div>}
           </div>
 
           <section className="settings-card shop-online-card">
@@ -738,7 +710,52 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
             <section className="settings-card" id="payment-settings">
               <div className="settings-card-heading"><span className="settings-icon"><CreditCard size={18} /></span><div><h2>Payment setting</h2><p>Choose which payment methods customers see on your order page.</p></div><span className="step-badge">03</span></div>
               <div className="payment-settings">
-                <article className={`shop-payment-method${shop.upiId ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol upi">▦</span><div><b>UPI payment</b><small>Customer pays directly to your UPI account</small></div><span className={`shop-payment-state${shop.upiId ? " ready" : ""}`}>{shop.upiId ? "Enabled" : "Not set up"}</span></div><label className="upi-field" htmlFor="upiId">Shop UPI ID<input id="upiId" autoComplete="off" placeholder="yourshop@bank" value={shop.upiId} onChange={(event) => updateShop("upiId", event.target.value)} /><small>Enter your UPI ID to show the UPI option. Payments go directly to you; verify them in your payment app.</small></label></article>
+                <article className={`shop-payment-method${shop.upiId ? " configured" : ""}`}>
+                  <div className="shop-payment-method-heading">
+                    <span className="shop-payment-symbol upi">▦</span>
+                    <div>
+                      <b>UPI payment</b>
+                      <small>Customer pays directly to your personal UPI account</small>
+                    </div>
+                    <span className={`shop-payment-state${shop.upiId ? " ready" : ""}`}>
+                      {shop.upiId ? "Enabled" : "Not set up"}
+                    </span>
+                  </div>
+                  <label className="upi-field" htmlFor="upiId">
+                    Shop UPI ID
+                    <input
+                      id="upiId"
+                      autoComplete="off"
+                      placeholder="yourshop@okhdfcbank or 9876543210@paytm"
+                      value={shop.upiId}
+                      onChange={(event) => updateShop("upiId", event.target.value)}
+                    />
+                    <small>
+                      Enter your personal or business UPI ID. When customers place orders via UPI on your customer page, they will be prompted with your personal payment QR code generated for the exact bill amount.
+                    </small>
+                  </label>
+
+                  {shop.upiId ? (
+                    <div style={{ marginTop: 14, padding: "14px 16px", background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 16 }}>
+                      <div style={{ background: "#ffffff", padding: 8, borderRadius: 10, border: "1px solid #e2e8f0", display: "inline-block", flexShrink: 0 }}>
+                        <QRCodeSVG
+                          value={`upi://pay?pa=${encodeURIComponent(shop.upiId)}&pn=${encodeURIComponent(shop.displayName)}&cu=INR`}
+                          size={90}
+                          level="M"
+                        />
+                      </div>
+                      <div>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
+                          <Check size={12} /> Personal Payment QR
+                        </div>
+                        <b style={{ display: "block", fontSize: 13, color: "#0f172a" }}>UPI: {shop.upiId}</b>
+                        <span style={{ fontSize: 11, color: "#64748b", display: "block", marginTop: 2, lineHeight: 1.4 }}>
+                          This is your personal payment receiving QR code (not the front-counter customer ordering QR). Customers scan this to transfer order payments directly to your bank account.
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+                </article>
                 <article className={`shop-payment-method${shop.cashEnabled ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol cash">⌂</span><div><b>Cash at counter</b><small>Customer pays when they collect the print</small></div><label className="toggle-switch-control"><input type="checkbox" checked={shop.cashEnabled} onChange={(event) => updateShop("cashEnabled", event.target.checked)} /><i/></label></div>{shop.cashEnabled && <p className="shop-payment-help">Orders stay marked as unpaid until you collect cash and confirm the payment.</p>}</article>
                 <div className="payment-note"><ShieldCheck size={16} /> UPI and cash payments go directly to your shop. Printly does not process customer payments or take a commission.</div>
               </div>
@@ -765,9 +782,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
               <button className="button button-dark save-button" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}{saving ? "Saving…" : section === "shop-profile" ? "Save profile" : section === "notifications" ? "Save preferences" : section === "privacy-settings" ? "Save privacy settings" : "Save changes"}</button>
             </div>
           </form>
-        </main>
-      </div>
-      <footer className="workspace-footer"><a href="/">printly.</a><span>Secure shop settings</span><span>Support <ChevronRight size={12} /></span></footer>
+      </main>
     </div>
   );
 }
