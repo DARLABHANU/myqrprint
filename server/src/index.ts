@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { app } from "./app.js";
 import { cleanupExpiredUploads } from "./services/uploadCleanup.js";
 import { sendDailyShopSummaries } from "./services/dailySummary.js";
+import { isCloudinaryEnabled } from "./services/cloudinary.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const mongoUri = process.env.MONGODB_URI ?? "";
@@ -15,6 +16,11 @@ async function start() {
   console.log("[Printly Server] Connecting to database...");
   await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 8000 });
   console.log("[Printly Server] Connected to MongoDB.");
+  if (isCloudinaryEnabled()) {
+    console.log("[Printly Server] Cloudinary media storage connected and active.");
+  } else {
+    console.log("[Printly Server] Cloudinary not configured; using local storage.");
+  }
   await cleanupExpiredUploads();
   const cleanupTimer = setInterval(() => {
     void cleanupExpiredUploads().catch((error: unknown) => {

@@ -9,6 +9,7 @@ import { CustomerUpload } from "../models/CustomerUpload.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { Shop } from "../models/Shop.js";
 import { transitionMerchantOrder } from "../orderWorkflow.js";
+import { pipeCloudinaryStream } from "../services/cloudinary.js";
 
 export const merchantOrdersRouter = Router();
 
@@ -263,24 +264,28 @@ merchantOrdersRouter.get("/orders/:orderId/files/:uploadId", async (request, res
       shopId: shop._id,
       orderId: order._id,
       state: "attached",
-    }).select("storageKey");
+    }).select("storageKey cloudinaryUrl");
     if (!upload) {
       response.status(410).json({ error: "The private file has expired." });
       return;
     }
-    const filePath = join(uploadDirectory, upload.storageKey);
-    try {
-      await stat(filePath);
-    } catch (error) {
-      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-        response.status(410).json({ error: "The private file is no longer available." });
-        return;
-      }
-      throw error;
-    }
     response.setHeader("Content-Type", file.mediaType);
     response.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(file.originalName)}"`);
-    createReadStream(filePath).pipe(response);
+
+    const filePath = join(uploadDirectory, upload.storageKey);
+    let localExists = false;
+    try {
+      await stat(filePath);
+      localExists = true;
+    } catch {}
+
+    if (localExists) {
+      createReadStream(filePath).pipe(response);
+    } else if (upload.cloudinaryUrl) {
+      await pipeCloudinaryStream(upload.cloudinaryUrl, response);
+    } else {
+      response.status(410).json({ error: "The private file is no longer available." });
+    }
   } catch (error) {
     next(error);
   }

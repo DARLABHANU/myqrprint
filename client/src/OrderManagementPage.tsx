@@ -31,7 +31,7 @@ type MerchantOrder = {
   id: string;
   code: string;
   status: OrderStatus;
-  paymentMethod: "upi" | "cash";
+  paymentMethod: "upi" | "cash" | "pay_here";
   paymentStatus: "unverified" | "awaiting_cash" | "paid";
   paymentClaimedAt?: string;
   paymentReference?: string;

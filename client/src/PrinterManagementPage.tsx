@@ -140,8 +140,18 @@ export function PrinterManagementPage() {
       const devicesData = await devicesRes.json();
       const shopData = await shopRes.json();
 
+      const rawRoutes = Array.isArray(printersData.routes) ? printersData.routes : [];
+      const normalizedRoutes: RouteItem[] = rawRoutes.map((r: any) => ({
+        paperSize: r.paperSize,
+        colour: Boolean(r.colour),
+        duplex: Boolean(r.duplex),
+        printerId: typeof r.printerId === "object" && r.printerId !== null
+          ? String(r.printerId._id || r.printerId)
+          : String(r.printerId || ""),
+      }));
+
       setPrinters(printersData.printers ?? []);
-      setRoutes(printersData.routes ?? []);
+      setRoutes(normalizedRoutes);
       setDevices(devicesData.devices ?? []);
       if (shopData?.shop) {
         setShop({
@@ -350,8 +360,13 @@ export function PrinterManagementPage() {
   }, [enabledSizes, shop]);
 
   function getPrinterForCombo(paperSize: PaperSize, colour: boolean, duplex: boolean): string {
-    const found = routes.find((r) => r.paperSize === paperSize && r.colour === colour && r.duplex === duplex);
-    return found ? found.printerId : "";
+    const found = routes.find(
+      (r) => r.paperSize === paperSize && Boolean(r.colour) === Boolean(colour) && Boolean(r.duplex) === Boolean(duplex)
+    );
+    if (!found) return "";
+    return typeof found.printerId === "object" && found.printerId !== null
+      ? String((found.printerId as any)._id || found.printerId)
+      : String(found.printerId || "");
   }
 
   const unassignedCount = useMemo(() => {
@@ -359,7 +374,16 @@ export function PrinterManagementPage() {
   }, [allPossibleCombos, routes]);
 
   async function handleRouteChange(paperSize: PaperSize, colour: boolean, duplex: boolean, printerId: string) {
-    const updatedRoutes = routes.filter((r) => !(r.paperSize === paperSize && r.colour === colour && r.duplex === duplex));
+    const currentNormalized = routes.map((r: any) => ({
+      paperSize: r.paperSize,
+      colour: Boolean(r.colour),
+      duplex: Boolean(r.duplex),
+      printerId: typeof r.printerId === "object" && r.printerId !== null ? String(r.printerId._id || r.printerId) : String(r.printerId || ""),
+    }));
+
+    const updatedRoutes = currentNormalized.filter(
+      (r) => !(r.paperSize === paperSize && r.colour === colour && r.duplex === duplex)
+    );
     if (printerId) {
       updatedRoutes.push({ paperSize, colour, duplex, printerId });
     }
@@ -367,6 +391,7 @@ export function PrinterManagementPage() {
 
     // Auto-save the new route to backend
     setSavingRoutes(true);
+    setError("");
     try {
       const response = await fetch("/api/shops/printer-routes", {
         method: "PUT",
@@ -376,17 +401,25 @@ export function PrinterManagementPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not save route.");
-      setRoutes(data.routes ?? updatedRoutes);
+      const savedRoutes = (data.routes ?? updatedRoutes).map((r: any) => ({
+        paperSize: r.paperSize,
+        colour: Boolean(r.colour),
+        duplex: Boolean(r.duplex),
+        printerId: typeof r.printerId === "object" && r.printerId !== null ? String(r.printerId._id || r.printerId) : String(r.printerId || ""),
+      }));
+      setRoutes(savedRoutes);
+      setSuccess("Printer route updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to auto-save route.");
+      void loadData();
     } finally {
       setSavingRoutes(false);
     }
   }
 
   async function handleAutoAssignAll() {
-    if (availablePrinters.length === 0) return;
-    const targetPrinter = availablePrinters.find((p) => p.isDefault) || availablePrinters[0];
+    if (printers.length === 0) return;
+    const targetPrinter = printers.find((p) => p.isDefault) || printers.find((p) => p.status === "ready") || printers[0];
     const newRoutes = allPossibleCombos.map((combo) => ({
       paperSize: combo.paperSize,
       colour: combo.colour,
@@ -405,10 +438,17 @@ export function PrinterManagementPage() {
       });
       if (!res.ok) throw new Error("Could not save auto-assigned routes.");
       const data = await res.json();
-      setRoutes(data.routes ?? newRoutes);
+      const savedRoutes = (data.routes ?? newRoutes).map((r: any) => ({
+        paperSize: r.paperSize,
+        colour: Boolean(r.colour),
+        duplex: Boolean(r.duplex),
+        printerId: typeof r.printerId === "object" && r.printerId !== null ? String(r.printerId._id || r.printerId) : String(r.printerId || ""),
+      }));
+      setRoutes(savedRoutes);
       setSuccess(`All print routes assigned to ${targetPrinter.name}!`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to auto-assign routes.");
+      void loadData();
     } finally {
       setSavingRoutes(false);
     }
@@ -853,7 +893,7 @@ export function PrinterManagementPage() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {unassignedCount > 0 && availablePrinters.length > 0 && (
+              {unassignedCount > 0 && printers.length > 0 && (
                 <button
                   type="button"
                   onClick={handleAutoAssignAll}
@@ -986,7 +1026,7 @@ export function PrinterManagementPage() {
                                   }
                                   disabled={savingRoutes}
                                   style={{
-                                    border: "1px solid #e2e8f0",
+                                    border: isUnassigned ? "1px solid #fca5a5" : "1px solid #cbd5e1",
                                     borderRadius: 8,
                                     padding: "7px 12px",
                                     fontSize: 13,
@@ -998,9 +1038,9 @@ export function PrinterManagementPage() {
                                   }}
                                 >
                                   <option value="">Not assigned</option>
-                                  {availablePrinters.map((p) => (
+                                  {printers.map((p) => (
                                     <option key={p._id} value={p._id}>
-                                      {p.name}
+                                      {p.name}{p.status === "offline" ? " (Offline)" : ""}
                                     </option>
                                   ))}
                                 </select>
@@ -1209,11 +1249,39 @@ export function PrinterManagementPage() {
                                 </span>
                               )}
                             </div>
-                            <span style={{ fontSize: 11, color: "#64748b" }}>
+                            <span style={{ fontSize: 11, color: "#64748b", display: "inline-flex", alignItems: "center", gap: 6 }}>
                               Status:{" "}
                               <span style={{ color: printer.status === "ready" ? "#16a34a" : "#dc2626", fontWeight: 700 }}>
                                 {printer.status}
                               </span>
+                              {printer.status === "offline" && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await fetch(`/api/shops/printers/${printer._id}/status`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        credentials: "same-origin",
+                                        body: JSON.stringify({ status: "ready" }),
+                                      });
+                                      await loadData();
+                                    } catch {}
+                                  }}
+                                  style={{
+                                    border: "1px solid #bbf7d0",
+                                    background: "#f0fdf4",
+                                    color: "#16a34a",
+                                    borderRadius: 4,
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    padding: "1px 6px",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Set Ready
+                                </button>
+                              )}
                             </span>
                           </div>
                         </div>

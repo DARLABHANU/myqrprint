@@ -2,6 +2,7 @@ import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { CustomerUpload } from "../models/CustomerUpload.js";
 import { PrintOrder } from "../models/PrintOrder.js";
+import { deleteFromCloudinary } from "./cloudinary.js";
 
 const uploadDirectory = join(process.cwd(), "data", "uploads");
 
@@ -16,7 +17,7 @@ async function removeFile(storageKey: string): Promise<void> {
 
 export async function cleanupExpiredUploads(): Promise<void> {
   const now = new Date();
-  const expiredUploads = await CustomerUpload.find({ expiresAt: { $lte: now } }).select("_id storageKey orderId");
+  const expiredUploads = await CustomerUpload.find({ expiresAt: { $lte: now } }).select("_id storageKey orderId cloudinaryPublicId cloudinaryResourceType");
   const expiredOrderIds = [...new Set(expiredUploads.flatMap((upload) => upload.orderId ? [String(upload.orderId)] : []))];
   const pendingStatuses = ["awaiting_payment", "awaiting_cash"] as const;
   const terminalStatuses = ["printed", "failed", "rejected", "cancelled", "expired"] as const;
@@ -41,6 +42,9 @@ export async function cleanupExpiredUploads(): Promise<void> {
 
   for (const upload of uploadsToDelete) {
     await removeFile(upload.storageKey);
+    if (upload.cloudinaryPublicId) {
+      await deleteFromCloudinary(upload.cloudinaryPublicId, upload.cloudinaryResourceType ?? "image").catch(() => {});
+    }
   }
   if (uploadsToDelete.length) {
     await CustomerUpload.deleteMany({ _id: { $in: uploadsToDelete.map((upload) => upload._id) } });

@@ -32,7 +32,7 @@ const printOrderSchema = new Schema(
       enum: ["awaiting_payment", "awaiting_cash", "needs_approval", "queued", "printing", "printed", "failed", "rejected", "cancelled", "expired"],
       required: true,
     },
-    paymentMethod: { type: String, enum: ["upi", "cash"], required: true },
+    paymentMethod: { type: String, enum: ["upi", "cash", "pay_here"], required: true },
     paymentStatus: { type: String, enum: ["unverified", "awaiting_cash", "paid"], required: true },
     paymentClaimedAt: { type: Date },
     paymentReference: { type: String, maxlength: 80 },

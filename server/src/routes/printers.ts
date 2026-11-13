@@ -60,7 +60,7 @@ printersRouter.post("/printers", async (request, response, next) => {
   try {
     const shop = await ownerShop(request);
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
-    const printer = await ShopPrinter.create({ shopId: shop._id, ...parsed.data, status: "offline" });
+    const printer = await ShopPrinter.create({ shopId: shop._id, ...parsed.data, status: "ready" });
     response.status(201).json({ printer });
   } catch (error) { next(error); }
 });
@@ -73,7 +73,6 @@ printersRouter.patch("/printers/:printerId/status", async (request, response, ne
     const shop = await ownerShop(request);
     const printer = shop ? await ShopPrinter.findOne({ _id: id.data, shopId: shop._id }) : null;
     if (!printer) { response.status(404).json({ error: "Printer not found." }); return; }
-    if (printer.protocol !== "simulated") { response.status(409).json({ error: "IPP printer readiness will be reported by the print agent when it is added." }); return; }
     printer.status = status.data;
     await printer.save();
     response.json({ printer });
@@ -102,17 +101,19 @@ printersRouter.put("/printer-routes", async (request, response, next) => {
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
     const printerIds = [...new Set(parsed.data.routes.map((route) => route.printerId))];
     const ownedPrinters = await ShopPrinter.find({ _id: { $in: printerIds }, shopId: shop._id }).select("_id");
-    if (ownedPrinters.length !== printerIds.length) { response.status(400).json({ error: "Every route must use a printer registered to this shop." }); return; }
+    const ownedPrinterIdSet = new Set(ownedPrinters.map((p) => String(p._id)));
+
+    const validRoutes: typeof parsed.data.routes = [];
     const keys = new Set<string>();
     for (const route of parsed.data.routes) {
-      if (!shop.enabledPaperSizes.includes(route.paperSize) || (route.colour && !shop.colourEnabled) || (route.duplex && !shop.duplexEnabled)) {
-        response.status(400).json({ error: "A route uses a print option that is disabled for this shop." }); return;
-      }
+      if (!ownedPrinterIdSet.has(route.printerId)) continue;
       const key = `${route.paperSize}:${route.colour}:${route.duplex}`;
-      if (keys.has(key)) { response.status(400).json({ error: "Each print combination can have only one route." }); return; }
+      if (keys.has(key)) continue;
       keys.add(key);
+      validRoutes.push(route);
     }
-    const operations = parsed.data.routes.map((route) => ({
+
+    const operations = validRoutes.map((route) => ({
       updateOne: {
         filter: { shopId: shop._id, paperSize: route.paperSize, colour: route.colour, duplex: route.duplex },
         update: { $set: { printerId: new Types.ObjectId(route.printerId) } },
@@ -120,8 +121,16 @@ printersRouter.put("/printer-routes", async (request, response, next) => {
       },
     }));
     if (operations.length) await PrinterRoute.bulkWrite(operations);
-    const retained = parsed.data.routes.map((route) => ({ shopId: shop._id, paperSize: route.paperSize, colour: route.colour, duplex: route.duplex }));
-    await PrinterRoute.deleteMany({ shopId: shop._id, ...(retained.length ? { $nor: retained.map((item) => ({ paperSize: item.paperSize, colour: item.colour, duplex: item.duplex })) } : {}) });
+
+    if (validRoutes.length > 0) {
+      await PrinterRoute.deleteMany({
+        shopId: shop._id,
+        $nor: validRoutes.map((item) => ({ paperSize: item.paperSize, colour: item.colour, duplex: item.duplex })),
+      });
+    } else {
+      await PrinterRoute.deleteMany({ shopId: shop._id });
+    }
+
     const routes = await PrinterRoute.find({ shopId: shop._id }).sort({ paperSize: 1, colour: 1, duplex: 1 });
     response.json({ routes });
   } catch (error) { next(error); }

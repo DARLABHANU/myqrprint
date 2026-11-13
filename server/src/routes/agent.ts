@@ -14,6 +14,7 @@ import { PrintOrder } from "../models/PrintOrder.js";
 import { PrinterRoute } from "../models/PrinterRoute.js";
 import { Shop } from "../models/Shop.js";
 import { ShopPrinter } from "../models/ShopPrinter.js";
+import { pipeCloudinaryStream } from "../services/cloudinary.js";
 
 export const agentRouter = Router();
 const authenticatedAgentRouter = Router();
@@ -175,7 +176,10 @@ authenticatedAgentRouter.get("/jobs/next", async (_request, response, next) => {
   const agent = response.locals.agent as InstanceType<typeof AgentDevice>;
   try {
     const now = new Date();
-    await ShopPrinter.updateMany({ shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", status: "ready", updatedAt: { $lt: new Date(now.getTime() - onlineWindowMs) } }, { $set: { status: "offline" } });
+    agent.lastSeenAt = now;
+    agent.status = "online";
+    await agent.save();
+
     const staleJobs = await PrintOrder.find({ shopId: agent.shopId, status: "printing", agentLeaseExpiresAt: { $lte: now } }).limit(50);
     const shop = staleJobs.length ? await Shop.findById(agent.shopId).select("fileRetentionHours") : null;
     for (const stale of staleJobs) {
@@ -196,8 +200,15 @@ authenticatedAgentRouter.get("/jobs/next", async (_request, response, next) => {
     for (const candidate of candidates) {
       const options = candidate.options!;
       const route = await PrinterRoute.findOne({ shopId: agent.shopId, paperSize: options.paperSize, colour: options.colour, duplex: options.duplex });
-      if (!route) continue;
-      const printer = await ShopPrinter.findOne({ _id: route.printerId, shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", status: "ready", systemName: { $type: "string" } });
+      let printer = null;
+      if (route) {
+        printer = await ShopPrinter.findOne({ _id: route.printerId, shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", systemName: { $type: "string" } });
+      }
+      if (!printer) {
+        // Fallback: use default Windows printer on this PC, or any Windows printer
+        printer = (await ShopPrinter.findOne({ shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", isDefault: true, systemName: { $type: "string" } }))
+          ?? (await ShopPrinter.findOne({ shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", systemName: { $type: "string" } }));
+      }
       if (!printer?.systemName) continue;
       const leaseId = randomUUID();
       const claimed = await PrintOrder.findOneAndUpdate(
@@ -251,14 +262,26 @@ authenticatedAgentRouter.get("/jobs/:orderId/files/:uploadId", async (request, r
   try {
     const order = await PrintOrder.findOne({ _id: parsedParams.data.orderId, shopId: agent.shopId, status: "printing", agentDeviceId: agent._id, agentLeaseId: lease.data, agentLeaseExpiresAt: { $gt: new Date() } });
     const linkedFile = order?.files.find((file) => String(file.uploadId) === parsedParams.data.uploadId);
-    const upload = linkedFile ? await CustomerUpload.findOne({ _id: parsedParams.data.uploadId, shopId: agent.shopId, orderId: order!._id, state: "attached" }) : null;
+    const upload = linkedFile ? await CustomerUpload.findOne({ _id: parsedParams.data.uploadId, shopId: agent.shopId, orderId: order!._id, state: "attached" }).select("mediaType originalName storageKey cloudinaryUrl") : null;
     if (!upload) { response.status(404).json({ error: "The file is no longer available for this print job." }); return; }
-    const filePath = join(uploadDirectory, upload.storageKey);
-    await stat(filePath);
     response.setHeader("Content-Type", upload.mediaType);
     response.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(upload.originalName)}`);
     response.setHeader("Cache-Control", "private, no-store");
-    createReadStream(filePath).on("error", next).pipe(response);
+
+    const filePath = join(uploadDirectory, upload.storageKey);
+    let localExists = false;
+    try {
+      await stat(filePath);
+      localExists = true;
+    } catch {}
+
+    if (localExists) {
+      createReadStream(filePath).on("error", next).pipe(response);
+    } else if (upload.cloudinaryUrl) {
+      await pipeCloudinaryStream(upload.cloudinaryUrl, response);
+    } else {
+      response.status(404).json({ error: "The file is no longer available on disk or cloud." });
+    }
   } catch (error) { next(error); }
 });
 

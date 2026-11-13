@@ -17,6 +17,11 @@ import {
 import { CustomerUpload } from "../models/CustomerUpload.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { Shop } from "../models/Shop.js";
+import {
+  deleteFromCloudinary,
+  isCloudinaryEnabled,
+  uploadToCloudinary,
+} from "../services/cloudinary.js";
 
 export const publicShopsRouter = Router();
 
@@ -76,7 +81,7 @@ const quoteSchema = z.object({
   options: optionsSchema,
 }).strict();
 const orderSchema = quoteSchema.extend({
-  paymentMethod: z.enum(["upi", "cash"]),
+  paymentMethod: z.enum(["upi", "cash", "pay_here"]),
   customerName: z.string().trim().max(100).optional(),
   customerMobile: z.string().trim().max(20).optional(),
   customerLatitude: z.number().min(-90).max(90).optional(),
@@ -347,19 +352,44 @@ publicShopsRouter.post("/:slug/uploads", uploadLimiter, uploadMiddleware, async 
       paths[index] = finalPath;
     }
 
+    // Upload to Cloudinary if configured
+    const cloudinaryMetadata: Array<{ url?: string; publicId?: string; resourceType?: string }> = [];
+    if (isCloudinaryEnabled()) {
+      for (const item of staged) {
+        try {
+          const res = await uploadToCloudinary({
+            filePath: item.file.path,
+            originalName: item.originalName,
+            mediaType: item.detected.mediaType,
+            publicId: item.storageKey.replace(/\.[^/.]+$/, ""),
+          });
+          cloudinaryMetadata.push({ url: res.secureUrl, publicId: res.publicId, resourceType: res.resourceType });
+        } catch (uploadErr) {
+          console.warn("[Cloudinary] Upload notice (falling back to local storage):", uploadErr);
+          cloudinaryMetadata.push({});
+        }
+      }
+    }
+
     const expiresAt = new Date(Date.now() + shop.fileRetentionHours * 60 * 60 * 1000);
-    const documents = staged.map(({ file, detected, storageKey, originalName }) => ({
-      shopId: shop._id,
-      sessionId: request.sessionID,
-      originalName,
-      storageKey,
-      mediaType: detected.mediaType,
-      kind: detected.kind,
-      sizeBytes: file.size,
-      pageCount: detected.pageCount,
-      state: "temporary" as const,
-      expiresAt,
-    }));
+    const documents = staged.map(({ file, detected, storageKey, originalName }, index) => {
+      const cMeta = cloudinaryMetadata[index] ?? {};
+      return {
+        shopId: shop._id,
+        sessionId: request.sessionID,
+        originalName,
+        storageKey,
+        mediaType: detected.mediaType,
+        kind: detected.kind,
+        sizeBytes: file.size,
+        pageCount: detected.pageCount,
+        state: "temporary" as const,
+        cloudinaryUrl: cMeta.url,
+        cloudinaryPublicId: cMeta.publicId,
+        cloudinaryResourceType: cMeta.resourceType,
+        expiresAt,
+      };
+    });
     const uploads = await CustomerUpload.create(documents);
     createdUploadIds.push(...uploads.map((upload) => upload._id));
     response.status(201).json({
@@ -369,6 +399,7 @@ publicShopsRouter.post("/:slug/uploads", uploadLimiter, uploadMiddleware, async 
         kind: upload.kind,
         pageCount: upload.pageCount,
         sizeBytes: upload.sizeBytes,
+        previewUrl: upload.cloudinaryUrl || undefined,
       })),
     });
   } catch (error) {
@@ -417,7 +448,10 @@ publicShopsRouter.delete("/:slug/uploads/:uploadId", async (request, response, n
       response.status(404).json({ error: "Upload not found." });
       return;
     }
-    await unlink(join(uploadDirectory, upload.storageKey));
+    await unlink(join(uploadDirectory, upload.storageKey)).catch(() => {});
+    if (upload.cloudinaryPublicId) {
+      await deleteFromCloudinary(upload.cloudinaryPublicId, upload.cloudinaryResourceType ?? "image").catch(() => {});
+    }
     await upload.deleteOne();
     response.status(204).end();
   } catch (error) {
@@ -537,7 +571,9 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
     const quote = calculateCustomerQuote(shop, uploads, parsed.data.options);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + shop.fileRetentionHours * 60 * 60 * 1000);
-    const status = parsed.data.paymentMethod === "upi" ? "awaiting_payment" : "awaiting_cash";
+    const isPayHere = parsed.data.paymentMethod === "pay_here";
+    const status = isPayHere ? "queued" : parsed.data.paymentMethod === "upi" ? "awaiting_payment" : "awaiting_cash";
+    const paymentStatus = isPayHere ? "paid" : parsed.data.paymentMethod === "upi" ? "unverified" : "awaiting_cash";
     let order: InstanceType<typeof PrintOrder> | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -548,7 +584,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
           idempotencyKey: idempotencyKey.data,
           status,
           paymentMethod: parsed.data.paymentMethod,
-          paymentStatus: parsed.data.paymentMethod === "upi" ? "unverified" : "awaiting_cash",
+          paymentStatus,
           customerName: parsed.data.customerName,
           customerMobile: parsed.data.customerMobile,
           amountPaise: quote.amountPaise,
@@ -561,7 +597,10 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
             sizeBytes: upload.sizeBytes,
             pageCount: upload.pageCount,
           })),
-          events: [{ type: "order_created", actorType: "customer", timestamp: now }],
+          events: [
+            { type: "order_created", actorType: "customer", timestamp: now },
+            ...(isPayHere ? [{ type: "instant_payment_received", actorType: "customer" as const, timestamp: now, note: "Paid instantly via Pay Here. Queued for auto-printing." }] : []),
+          ],
           expiresAt,
         });
         break;
