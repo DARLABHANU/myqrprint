@@ -15,6 +15,7 @@ import {
   sanitizeOriginalName,
 } from "../customerOrder.js";
 import { CustomerUpload } from "../models/CustomerUpload.js";
+import { AgentDevice } from "../models/AgentDevice.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { Shop } from "../models/Shop.js";
 import {
@@ -28,6 +29,18 @@ export const publicShopsRouter = Router();
 const uploadDirectory = join(process.cwd(), "data", "uploads");
 const uploadLimitBytes = 25 * 1024 * 1024;
 const supportedMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+const agentOnlineWindowMs = 30 * 1000;
+
+async function findOrderAcceptingShop(slug: string) {
+  const shop = await Shop.findOne({ slug, isOnline: true });
+  if (!shop) return null;
+  const agent = await AgentDevice.exists({
+    shopId: shop._id,
+    status: "online",
+    lastSeenAt: { $gte: new Date(Date.now() - agentOnlineWindowMs) },
+  });
+  return agent ? shop : null;
+}
 
 const uploadStorage = multer.diskStorage({
   destination: (_request, _file, callback) => {
@@ -283,7 +296,7 @@ publicShopsRouter.get("/:slug", async (request, response, next) => {
   const slug = slugOrRespond(request, response);
   if (!slug) return;
   try {
-    const shop = await Shop.findOne({ slug, isOnline: { $ne: false } });
+    const shop = await findOrderAcceptingShop(slug);
     if (!shop) {
       response.status(404).json({ error: "This shop is currently unavailable." });
       return;
@@ -309,7 +322,7 @@ publicShopsRouter.post("/:slug/uploads", uploadLimiter, uploadMiddleware, async 
       response.status(400).json({ error: "Choose PDF documents or photos and select at least one file." });
       return;
     }
-    const shop = await Shop.findOne({ slug, isOnline: { $ne: false } });
+    const shop = await findOrderAcceptingShop(slug);
     if (!shop) {
       await cleanupPaths(paths);
       response.status(404).json({ error: "This shop is currently unavailable." });
@@ -468,7 +481,7 @@ publicShopsRouter.post("/:slug/quote", async (request, response, next) => {
     return;
   }
   try {
-    const shop = await Shop.findOne({ slug, isOnline: { $ne: false } });
+    const shop = await findOrderAcceptingShop(slug);
     if (!shop) {
       response.status(404).json({ error: "This shop is currently unavailable." });
       return;
@@ -504,7 +517,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
   let createdOrderId: mongoose.Types.ObjectId | undefined;
   let orderShopId: mongoose.Types.ObjectId | undefined;
   try {
-    const shop = await Shop.findOne({ slug, isOnline: { $ne: false } });
+    const shop = await findOrderAcceptingShop(slug);
     if (!shop) {
       response.status(404).json({ error: "This shop is currently unavailable." });
       return;

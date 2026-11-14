@@ -2,12 +2,15 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { isValidObjectId } from "mongoose";
 import { z } from "zod";
 import { Shop } from "../models/Shop.js";
+import { AgentDevice } from "../models/AgentDevice.js";
+import { requireDesktopAgent } from "../agentAccess.js";
 import { User } from "../models/User.js";
 import { calculateQuote } from "../pricing.js";
 
 export const shopsRouter = Router();
 
 const paperSizes = ["A3", "A4", "A5", "Legal"] as const;
+const agentOnlineWindowMs = 30 * 1000;
 const rateSchema = z.object({
   blackWhiteSimplexPaise: z.number().int().min(0).max(100_000_000),
   colourSimplexPaise: z.number().int().min(0).max(100_000_000),
@@ -130,7 +133,7 @@ function requireOwner(request: Request, response: Response, next: NextFunction) 
 
 shopsRouter.use(requireOwner);
 
-shopsRouter.patch("/online", async (request, response, next) => {
+shopsRouter.patch("/online", requireDesktopAgent, async (request, response, next) => {
   const parsed = z.object({ isOnline: z.boolean() }).strict().safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Choose whether your shop is online." }); return; }
   try {
@@ -140,7 +143,7 @@ shopsRouter.patch("/online", async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
-shopsRouter.patch("/notifications", async (request, response, next) => {
+shopsRouter.patch("/notifications", requireDesktopAgent, async (request, response, next) => {
   const parsed = z.object({
     newOrder: z.boolean().optional(),
     printFailed: z.boolean().optional(),
@@ -164,13 +167,15 @@ shopsRouter.get("/me", async (request, response, next) => {
       response.status(404).json({ error: "Shop settings were not found." });
       return;
     }
-    response.json({ shop });
+    const onlineSince = new Date(Date.now() - agentOnlineWindowMs);
+    const agentOnline = Boolean(await AgentDevice.exists({ shopId: shop._id, status: "online", lastSeenAt: { $gte: onlineSince } }));
+    response.json({ shop, agentOnline });
   } catch (error) {
     next(error);
   }
 });
 
-shopsRouter.put("/me", async (request, response, next) => {
+shopsRouter.put("/me", requireDesktopAgent, async (request, response, next) => {
   const parsed = shopSettingsSchema.safeParse(request.body);
   if (!parsed.success) {
     response.status(400).json({

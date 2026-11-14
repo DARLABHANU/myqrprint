@@ -28,7 +28,7 @@ const shopSchema = new Schema(
     upiEnabled: { type: Boolean },
     cashEnabled: { type: Boolean, default: true },
     autoPrint: { type: Boolean, default: false },
-    isOnline: { type: Boolean, default: true },
+    isOnline: { type: Boolean, default: false },
     locationLockEnabled: { type: Boolean, default: false },
     locationLatitude: { type: Number, min: -90, max: 90 },
     locationLongitude: { type: Number, min: -180, max: 180 },

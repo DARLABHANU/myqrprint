@@ -9,6 +9,7 @@ import { CustomerUpload } from "../models/CustomerUpload.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { Shop } from "../models/Shop.js";
 import { transitionMerchantOrder } from "../orderWorkflow.js";
+import { requireDesktopAgent } from "../agentAccess.js";
 import { pipeCloudinaryStream } from "../services/cloudinary.js";
 
 export const merchantOrdersRouter = Router();
@@ -121,7 +122,7 @@ merchantOrdersRouter.get("/orders", async (request, response, next) => {
   }
 });
 
-merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) => {
+merchantOrdersRouter.patch("/orders/:orderId", requireDesktopAgent, async (request, response, next) => {
   const orderId = z.string().refine(isValidObjectId).safeParse(request.params.orderId);
   const parsedBody = actionSchema.safeParse(request.body);
   if (!orderId.success || !parsedBody.success) {
@@ -182,7 +183,7 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
   }
 });
 
-merchantOrdersRouter.patch("/orders/:orderId/options", async (request, response, next) => {
+merchantOrdersRouter.patch("/orders/:orderId/options", requireDesktopAgent, async (request, response, next) => {
   const orderId = z.string().refine(isValidObjectId).safeParse(request.params.orderId);
   const parsedOptions = optionsSchema.safeParse(request.body);
   if (!orderId.success || !parsedOptions.success) {

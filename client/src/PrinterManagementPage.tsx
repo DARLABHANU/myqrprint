@@ -39,6 +39,7 @@ type ShopPrinterItem = {
   supportsColour: boolean;
   supportsDuplex: boolean;
   isDefault?: boolean;
+  agentDeviceId?: string;
 };
 
 type RouteItem = {
@@ -67,6 +68,7 @@ declare global {
     printly?: {
       getStatus: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string }>;
       refresh: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string }>;
+      setShopOnline: (isOnline: boolean) => Promise<{ isOnline: boolean; agentOnline: boolean }>;
       pair: (code: string, apiUrl: string) => Promise<{ connected: boolean; deviceName: string }>;
       disconnect: () => Promise<{ connected: boolean }>;
       openExternal: (url: string) => Promise<boolean>;
@@ -153,9 +155,14 @@ export function PrinterManagementPage() {
           : String(r.printerId || ""),
       }));
 
-      setPrinters(printersData.printers ?? []);
       setRoutes(normalizedRoutes);
-      setDevices(devicesData.devices ?? []);
+      const loadedDevices: Device[] = devicesData.devices ?? [];
+      const onlineDeviceIds = new Set(loadedDevices.filter((device) => device.status === "online").map((device) => device.id));
+      setPrinters((printersData.printers ?? []).map((printer: ShopPrinterItem) => ({
+        ...printer,
+        ...(printer.protocol === "windows" && printer.agentDeviceId && !onlineDeviceIds.has(printer.agentDeviceId) ? { status: "offline" as const } : {}),
+      })));
+      setDevices(loadedDevices);
       if (shopData?.shop) {
         setShop({
           enabledPaperSizes: shopData.shop.enabledPaperSizes ?? ["A4"],
@@ -704,7 +711,11 @@ export function PrinterManagementPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {devices.map((device) => {
                 const isOnline = device.status === "online";
-                const printersOnDevice = printers.filter((p) => p.protocol === "windows");
+                const printersOnDevice = printers.filter((p) => p.protocol === "windows" && p.agentDeviceId === device.id);
+                const lastSeenLabel = device.lastSeenAt ? (() => {
+                  const minutes = Math.max(0, Math.floor((Date.now() - new Date(device.lastSeenAt).getTime()) / 60000));
+                  return minutes < 1 ? "Just now" : minutes < 60 ? `Last seen ${minutes} min ago` : minutes < 1440 ? `Last seen ${Math.floor(minutes / 60)} hr ago` : `Last seen ${Math.floor(minutes / 1440)} day${Math.floor(minutes / 1440) === 1 ? "" : "s"} ago`;
+                })() : "Never connected";
 
                 return (
                   <div
@@ -765,7 +776,7 @@ export function PrinterManagementPage() {
                             {isOnline ? "✓ Online" : "Offline"}
                           </span>
                           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                            {device.lastSeenAt ? "Just now" : "Never"}
+                            {lastSeenLabel}
                           </div>
                         </div>
 
@@ -827,6 +838,8 @@ export function PrinterManagementPage() {
                         </div>
                       </div>
                     </div>
+
+                    {!isOnline && <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: "#fffbeb", color: "#a45108", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><AlertCircle size={14} />This PC is off or not connected to the internet — its printers can’t take jobs.</div>}
 
                     {/* Bottom Row: PRINTERS ON THIS PC */}
                     <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>

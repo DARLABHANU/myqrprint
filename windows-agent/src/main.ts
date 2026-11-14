@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, session, shell, Tray } from 'electron';
 import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { readFile, writeFile, rm } from 'node:fs/promises';
@@ -309,6 +309,16 @@ function createWindow() {
 }
 app.whenReady().then(async () => {
   await loadConnection();
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['https://*/*', 'http://*/*'] }, (details, callback) => {
+    const requestHeaders = { ...details.requestHeaders };
+    try {
+      const url = new URL(details.url);
+      if (connection && url.pathname.startsWith('/api/') && isAllowedOrigin(url.origin)) {
+        requestHeaders['X-Printly-Agent-Token'] = connection.token;
+      }
+    } catch { /* Ignore malformed or non-web request URLs. */ }
+    callback({ requestHeaders });
+  });
   createWindow();
   if (connection && !pauseJobPolling) startPolling();
   else if (connection && pauseJobPolling) console.warn('[AGENT] Automatic print-job polling is paused for this session.');
@@ -360,6 +370,10 @@ ipcMain.handle('agent:refresh', async () => {
     printersCount: printersList.length,
     printers: printersList,
   };
+});
+ipcMain.handle('agent:shop-online', async (_event, isOnline: unknown) => {
+  if (typeof isOnline !== 'boolean') throw new Error('Choose whether the shop is online.');
+  return api('/api/agent/shop-online', { method: 'PATCH', body: JSON.stringify({ isOnline }) });
 });
 ipcMain.handle('agent:open-external', async (_event, url: string) => {
   if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {

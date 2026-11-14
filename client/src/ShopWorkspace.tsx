@@ -54,6 +54,7 @@ type ShopSettings = {
   cashEnabled: boolean;
   autoPrint: boolean;
   isOnline: boolean;
+  agentOnline?: boolean;
   locationLockEnabled: boolean;
   locationLatitude?: number;
   locationLongitude?: number;
@@ -99,7 +100,7 @@ function createEmptyShop(): ShopSettings {
     upiEnabled: false,
     cashEnabled: true,
     autoPrint: false,
-    isOnline: true,
+    isOnline: false,
     locationLockEnabled: false,
     locationRadiusMeters: 200,
     bulkDiscountMinPages: 0,
@@ -335,9 +336,9 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
       try {
         const { user: account } = await requestJson<{ user: User }>("/api/auth/me");
         setUser(account);
-        const { shop: savedShop } = await requestJson<{ shop: ShopSettings }>("/api/shops/me");
+        const { shop: savedShop, agentOnline } = await requestJson<{ shop: ShopSettings; agentOnline?: boolean }>("/api/shops/me");
         const rates = { ...createEmptyShop().rates, ...savedShop.rates };
-        setShop({ ...createEmptyShop(), ...savedShop, autoPrint: savedShop.autoPrint ?? false, upiEnabled: savedShop.upiEnabled ?? Boolean(savedShop.upiId), discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
+        setShop({ ...createEmptyShop(), ...savedShop, agentOnline: Boolean(agentOnline), autoPrint: savedShop.autoPrint ?? false, upiEnabled: savedShop.upiEnabled ?? Boolean(savedShop.upiId), discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
       } catch (reason) {
         if (reason instanceof Error && reason.message.includes("Sign in")) {
           window.location.assign("/login");
@@ -590,7 +591,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
 
           <section className="settings-card shop-online-card">
             <div className="settings-card-heading"><span className="settings-icon"><Store size={18} /></span><div><h2>Customer orders</h2><p>Pause your public order page when the shop cannot accept jobs.</p></div><span className="step-badge">STATUS</span></div>
-            <label className="toggle-row"><span><b>{shop.isOnline ? "Shop online" : "Shop offline"}</b><small>{shop.isOnline ? "Customers can open your shop page and place orders." : "New customer orders are paused until you turn this back on."}</small></span><input type="checkbox" checked={shop.isOnline} onChange={(event) => updateShop("isOnline", event.target.checked)} /><i /></label>
+            <label className="toggle-row"><span><b>{shop.isOnline && shop.agentOnline ? "Shop online" : "Shop offline"}</b><small>{!shop.agentOnline ? "Open and connect the desktop agent, then set the shop online there." : shop.isOnline ? "Customers can open your shop page and place orders." : "New customer orders are paused until you turn the shop online in the desktop agent."}</small></span><input type="checkbox" checked={shop.isOnline && Boolean(shop.agentOnline)} readOnly disabled /><i /></label>
           </section>
 
           {error && <div className="form-alert settings-alert" role="alert">{error}</div>}

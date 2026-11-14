@@ -31,6 +31,7 @@ export type AgentStatus = {
 export interface WindowPrintlyApi {
   getStatus: () => Promise<AgentStatus>;
   refresh: () => Promise<AgentStatus>;
+  setShopOnline: (isOnline: boolean) => Promise<{ isOnline: boolean; agentOnline: boolean }>;
   pair: (code: string, apiUrl: string) => Promise<{ connected: boolean; deviceName: string; shopName?: string }>;
   disconnect: () => Promise<{ connected: boolean }>;
   openExternal: (url: string) => Promise<boolean>;

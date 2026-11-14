@@ -3,6 +3,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { isValidObjectId, Types } from "mongoose";
 import { z } from "zod";
 import { PrinterRoute } from "../models/PrinterRoute.js";
+import { requireDesktopAgent } from "../agentAccess.js";
 import { Shop } from "../models/Shop.js";
 import { ShopPrinter } from "../models/ShopPrinter.js";
 
@@ -84,26 +85,9 @@ printersRouter.get("/printers", async (request, response, next) => {
   try {
     const shop = await ownerShop(request);
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
-    // Add/Update registered virtual printer so it is always ready to receive jobs
-    const virtualTarget = "virtual on http://192.168.1.5:10631";
-    await ShopPrinter.findOneAndUpdate(
-      { shopId: shop._id, systemName: virtualTarget },
-      {
-        $set: {
-          name: virtualTarget,
-          systemName: virtualTarget,
-          protocol: "windows",
-          status: "ready",
-          paperSizes: ["A3", "A4", "A5", "Legal"],
-          supportsColour: true,
-          supportsDuplex: true,
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
 
     const [printers, routes] = await Promise.all([
-      ShopPrinter.find({ shopId: shop._id }).sort({ createdAt: 1 }),
+      ShopPrinter.find({ shopId: shop._id, $or: [{ systemName: { $ne: "virtual on http://192.168.1.5:10631" } }, { agentDeviceId: { $exists: true } }] }).sort({ createdAt: 1 }),
       PrinterRoute.find({ shopId: shop._id }).sort({ paperSize: 1, colour: 1, duplex: 1 }),
     ]);
 
@@ -129,7 +113,7 @@ printersRouter.get("/printers", async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
-printersRouter.post("/printers", async (request, response, next) => {
+printersRouter.post("/printers", requireDesktopAgent, async (request, response, next) => {
   const parsed = printerSchema.safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Check the printer name and IPP address." }); return; }
   try {
@@ -140,7 +124,7 @@ printersRouter.post("/printers", async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
-printersRouter.patch("/printers/:printerId/status", async (request, response, next) => {
+printersRouter.patch("/printers/:printerId/status", requireDesktopAgent, async (request, response, next) => {
   const id = z.string().refine(isValidObjectId).safeParse(request.params.printerId);
   const status = z.enum(["ready", "offline"]).safeParse(request.body?.status);
   if (!id.success || !status.success) { response.status(400).json({ error: "Choose a valid printer status." }); return; }
@@ -154,7 +138,7 @@ printersRouter.patch("/printers/:printerId/status", async (request, response, ne
   } catch (error) { next(error); }
 });
 
-printersRouter.delete("/printers/:printerId", async (request, response, next) => {
+printersRouter.delete("/printers/:printerId", requireDesktopAgent, async (request, response, next) => {
   const id = z.string().refine(isValidObjectId).safeParse(request.params.printerId);
   if (!id.success) { response.status(400).json({ error: "Choose a valid printer." }); return; }
   try {
@@ -168,7 +152,7 @@ printersRouter.delete("/printers/:printerId", async (request, response, next) =>
   } catch (error) { next(error); }
 });
 
-printersRouter.put("/printer-routes", async (request, response, next) => {
+printersRouter.put("/printer-routes", requireDesktopAgent, async (request, response, next) => {
   const parsed = routesSchema.safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Check the printer routing rules." }); return; }
   try {

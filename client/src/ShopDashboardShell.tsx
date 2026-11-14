@@ -17,6 +17,7 @@ import {
 type ShopSummary = {
   displayName: string;
   isOnline: boolean;
+  agentOnline?: boolean;
   notificationPreferences?: { newOrder: boolean; printFailed: boolean; uploadSound: boolean; customerUploadVoice: boolean; dailyEmail: boolean };
   subscriptionPlan?: string;
   subscriptionExpiresAt?: string;
@@ -78,6 +79,7 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function ShopDashboardShell({ children }: { children: ReactNode }) {
   const path = window.location.pathname.replace(/\/$/, "") || "/dashboard";
+  const isDesktopAgent = typeof window !== "undefined" && Boolean(window.printly);
   const [shop, setShop] = useState<ShopSummary | null>(null);
   const [account, setAccount] = useState<AccountSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,10 +95,10 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void Promise.all([
-      json<{ shop: ShopSummary }>("/api/shops/me"),
+      json<{ shop: ShopSummary; agentOnline?: boolean }>("/api/shops/me"),
       json<{ user: AccountSummary }>("/api/auth/me"),
     ]).then(([shopResponse, accountResponse]) => {
-      setShop(shopResponse.shop);
+      setShop({ ...shopResponse.shop, agentOnline: Boolean(shopResponse.agentOnline) });
       setAccount(accountResponse.user);
     }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load your shop."))
       .finally(() => setLoading(false));
@@ -116,8 +118,12 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
     let mounted = true;
     async function pollOrders() {
       try {
-        const response = await json<{ orders: OrderStatus[] }>("/api/shops/orders");
+        const [response, shopResponse] = await Promise.all([
+          json<{ orders: OrderStatus[] }>("/api/shops/orders"),
+          json<{ shop: ShopSummary; agentOnline?: boolean }>("/api/shops/me"),
+        ]);
         if (!mounted) return;
+        setShop({ ...shopResponse.shop, agentOnline: Boolean(shopResponse.agentOnline) });
         const current = new Map(response.orders.map((order) => [order.code, order.status]));
         if (seenOrders.current) {
           const preferences = preferencesRef.current;
@@ -164,12 +170,25 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
     return () => { mounted = false; window.clearInterval(timer); };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    const refreshAgentState = async () => {
+      try {
+        const result = await json<{ shop: ShopSummary; agentOnline?: boolean }>("/api/shops/me");
+        if (mounted) setShop({ ...result.shop, agentOnline: Boolean(result.agentOnline) });
+      } catch { /* The dashboard remains readable and individual pages show API failures. */ }
+    };
+    void refreshAgentState();
+    const timer = window.setInterval(() => void refreshAgentState(), 10_000);
+    return () => { mounted = false; window.clearInterval(timer); };
+  }, []);
+
   async function toggleOnline() {
-    if (!shop) return;
+    if (!shop || !isDesktopAgent || !shop.agentOnline || !window.printly?.setShopOnline) return;
     setBusy(true); setError("");
     try {
-      const result = await json<{ isOnline: boolean }>("/api/shops/online", { method: "PATCH", body: JSON.stringify({ isOnline: !shop.isOnline }) });
-      setShop({ ...shop, isOnline: result.isOnline });
+      const result = await window.printly.setShopOnline(!shop.isOnline);
+      setShop({ ...shop, isOnline: result.isOnline, agentOnline: result.agentOnline });
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not update shop status."); }
     finally { setBusy(false); }
   }
@@ -216,12 +235,13 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
   const maxOrders = shop?.subscriptionOrderLimit ?? 50;
   const usedOrders = shop?.subscriptionOrdersUsed ?? 4;
   const ordersBarPercent = Math.min(100, Math.max(6, (usedOrders / maxOrders) * 100));
+  const shopAcceptingOrders = Boolean(shop?.isOnline && shop?.agentOnline);
 
-  return <div className={`shop-dashboard-shell${sidebarCollapsed ? " is-collapsed" : ""}`} style={{ gridTemplateColumns: sidebarCollapsed ? "72px minmax(0,1fr)" : "244px minmax(0,1fr)", transition: "grid-template-columns 0.2s ease" }}>
+  return <div className={`shop-dashboard-shell${sidebarCollapsed ? " is-collapsed" : ""}${isDesktopAgent ? " is-desktop-agent" : " is-web-readonly"}`} style={{ gridTemplateColumns: sidebarCollapsed ? "72px minmax(0,1fr)" : "244px minmax(0,1fr)", transition: "grid-template-columns 0.2s ease" }}>
     <aside className={`shop-dashboard-sidebar${mobileNavOpen ? " is-open" : ""}${sidebarCollapsed ? " is-collapsed" : ""}`} style={{ width: sidebarCollapsed ? 72 : 244, transition: "width 0.2s ease", padding: sidebarCollapsed ? "17px 8px 12px" : "17px 14px 12px" }}>
       <a className="shop-dashboard-brand" href="/dashboard" style={{ justifyContent: sidebarCollapsed ? "center" : "flex-start", padding: sidebarCollapsed ? 0 : "0 10px" }}><span className="brand-mark"><QrCode size={19} /></span>{!sidebarCollapsed && <b>Printly</b>}</a>
       <button className="shop-sidebar-close" type="button" aria-label="Close menu" onClick={() => setMobileNavOpen(false)}><X size={18} /></button>
-      <div className="shop-sidebar-identity" style={{ padding: sidebarCollapsed ? "8px 0" : "10px 8px", justifyContent: sidebarCollapsed ? "center" : "flex-start" }}><span className="shop-sidebar-avatar"><Store size={17} /></span>{!sidebarCollapsed && <div><b>{shop?.displayName ?? "Your print shop"}</b><small>{shop?.isOnline ? "Shop online" : "Shop offline"}</small></div>}</div>
+      <div className="shop-sidebar-identity" style={{ padding: sidebarCollapsed ? "8px 0" : "10px 8px", justifyContent: sidebarCollapsed ? "center" : "flex-start" }}><span className="shop-sidebar-avatar"><Store size={17} /></span>{!sidebarCollapsed && <div><b>{shop?.displayName ?? "Your print shop"}</b><small>{shopAcceptingOrders ? "Shop online" : "Shop offline"}</small></div>}</div>
       {navGroups.map((group) => <nav className="shop-sidebar-group" key={group.label} aria-label={group.label === "MAIN" ? "Main" : "Shop"}>
         {!sidebarCollapsed && <p>{group.label}</p>}
         {group.links.map(({ title, href, icon: Icon }) => <a className={`shop-sidebar-link${pathIsActive(path, href) ? " active" : ""}`} href={href} key={title} aria-current={pathIsActive(path, href) ? "page" : undefined} title={sidebarCollapsed ? title : undefined} style={{ justifyContent: sidebarCollapsed ? "center" : "flex-start", padding: sidebarCollapsed ? "0" : "0 10px" }} onClick={() => setMobileNavOpen(false)}><Icon size={17} />{!sidebarCollapsed && <span>{title}</span>}</a>)}
@@ -363,8 +383,8 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
         <button className="shop-menu-toggle" type="button" aria-label="Open menu" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen((current) => !current)}><Menu size={19} /></button>
         <div className="shop-page-identity"><b>{pageTitle(path)}</b><span>{shop?.displayName ?? "Shop workspace"}</span></div>
         <div className="shop-dashboard-actions">
-          <button className={`shop-alert-toggle${shop?.notificationPreferences?.newOrder ? " enabled" : ""}`} type="button" disabled={!shop || busy} aria-label={shop?.notificationPreferences?.newOrder ? "Turn off new order alert" : "Turn on new order alert"} aria-pressed={Boolean(shop?.notificationPreferences?.newOrder)} onClick={() => void toggleOrderAlert()}>{shop?.notificationPreferences?.newOrder ? <Bell size={17} /> : <BellOff size={17} />}</button>
-          <button className={`shop-online-switch${shop?.isOnline ? " is-online" : ""}`} type="button" role="switch" aria-checked={Boolean(shop?.isOnline)} disabled={!shop || busy} onClick={() => void toggleOnline()}><i />{shop?.isOnline ? "Shop online" : "Shop offline"}</button>
+          <button className={`shop-alert-toggle${shop?.notificationPreferences?.newOrder ? " enabled" : ""}`} type="button" disabled={!isDesktopAgent || !shop || busy} aria-label={shop?.notificationPreferences?.newOrder ? "Turn off new order alert" : "Turn on new order alert"} aria-pressed={Boolean(shop?.notificationPreferences?.newOrder)} onClick={() => void toggleOrderAlert()}>{shop?.notificationPreferences?.newOrder ? <Bell size={17} /> : <BellOff size={17} />}</button>
+          <button className={`shop-online-switch${shopAcceptingOrders ? " is-online" : ""}`} type="button" role="switch" aria-checked={shopAcceptingOrders} disabled={!isDesktopAgent || !shop?.agentOnline || busy} title={!isDesktopAgent ? "Shop status can be changed in the desktop agent." : !shop?.agentOnline ? "Connect the desktop agent to change shop status." : undefined} onClick={() => void toggleOnline()}><i />{shopAcceptingOrders ? "Shop online" : "Shop offline"}</button>
           <div className="shop-account-menu-wrap">
             <button className="shop-account-menu-button" type="button" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((current) => !current)}><span>{(account?.ownerName ?? "P").slice(0, 1).toUpperCase()}</span><b>{account?.ownerName ?? "Account"}<small>{shop?.displayName ?? account?.email ?? ""}</small></b><ChevronDown size={14} /></button>
             {accountMenuOpen && <div className="shop-account-popover"><a href="/dashboard/settings/profile" onClick={() => setAccountMenuOpen(false)}>My profile</a><a href="/dashboard/settings/security" onClick={() => setAccountMenuOpen(false)}>Account & security</a><a href="/dashboard/subscription" onClick={() => setAccountMenuOpen(false)}>My subscription</a>{account?.email?.toLowerCase() === "daarlabhanumurthy@gmail.com" && <a href="/admin/subscriptions" onClick={() => setAccountMenuOpen(false)} style={{ color: "#078c68", fontWeight: 700 }}>Admin subscriptions</a>}<button type="button" disabled={busy} onClick={() => void signOut()}><LogOut size={14} /> Sign out</button></div>}
@@ -374,9 +394,10 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
       <main className="shop-dashboard-content">
         {error && <div className="shop-shell-error" role="alert">{error}</div>}
         {loading && <div className="shop-shell-loading" aria-hidden="true" />}
+        {!isDesktopAgent && <div role="status" style={{ margin: "0 0 16px", padding: "12px 16px", border: "1px solid #cfe8df", borderRadius: 12, background: "#effaf5", color: "#315f50", fontSize: 13, lineHeight: 1.5 }}><b>Read-only dashboard.</b> Manage printers, print jobs, and shop availability in the Printly desktop agent. Customers can place orders only while the agent is connected and the shop is set online there.</div>}
         <div className={`shop-dashboard-inner${settingTabs.length ? " has-setting-tabs" : ""}`}>
           {settingTabs.length > 0 && <nav className="shop-settings-tabs" aria-label={isSettingRoute ? "Setting" : "My Profile"}>{settingTabs.map(([label, href]) => <a key={href} className={path === href || (href.endsWith("/page") && path === "/dashboard/setting") || (href.endsWith("/profile") && path === "/dashboard/settings") ? "active" : ""} href={href}>{label}</a>)}</nav>}
-          <div className="shop-dashboard-view">{children}</div>
+          <fieldset className="shop-dashboard-view-fieldset" disabled={!isDesktopAgent} style={{ border: 0, margin: 0, minWidth: 0, padding: 0, width: "100%" }}><div className="shop-dashboard-view">{children}</div></fieldset>
         </div>
       </main>
     </div>

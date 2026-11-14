@@ -15,6 +15,7 @@ import { PrinterRoute } from "../models/PrinterRoute.js";
 import { Shop } from "../models/Shop.js";
 import { ShopPrinter } from "../models/ShopPrinter.js";
 import { pipeCloudinaryStream } from "../services/cloudinary.js";
+import { requireDesktopAgent } from "../agentAccess.js";
 
 export const agentRouter = Router();
 const authenticatedAgentRouter = Router();
@@ -88,6 +89,10 @@ agentRouter.post("/pair", pairingLimiter, async (request, response, next) => {
     const shop = await Shop.findById(pairing.shopId).select("displayName");
     if (!shop) { response.status(404).json({ error: "The shop for this pairing code no longer exists." }); return; }
 
+    // Pairing a computer never publishes the customer page by itself. The shop owner must
+    // explicitly turn the shop online from the connected desktop agent.
+    await Shop.updateOne({ _id: shop._id }, { $set: { isOnline: false } });
+
     const accessToken = randomBytes(48).toString("base64url");
     const tokenExpiresAt = new Date(now.getTime() + accessTokenLifetimeMs);
     let agent = await AgentDevice.findOne({ shopId: pairing.shopId, deviceName: parsed.data.deviceName });
@@ -127,6 +132,21 @@ agentRouter.post("/pair", pairingLimiter, async (request, response, next) => {
 });
 
 authenticatedAgentRouter.use(requireAgent);
+
+authenticatedAgentRouter.patch("/shop-online", async (request, response, next) => {
+  const parsed = z.object({ isOnline: z.boolean() }).strict().safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ error: "Choose whether your shop is online." }); return; }
+  const agent = response.locals.agent as InstanceType<typeof AgentDevice>;
+  try {
+    const now = new Date();
+    const shop = await Shop.findByIdAndUpdate(agent.shopId, { $set: { isOnline: parsed.data.isOnline } }, { new: true }).select("isOnline");
+    if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
+    agent.status = "online";
+    agent.lastSeenAt = now;
+    await agent.save();
+    response.json({ isOnline: shop.isOnline, agentOnline: true });
+  } catch (error) { next(error); }
+});
 
 authenticatedAgentRouter.get("/me", (_request, response) => {
   const agent = response.locals.agent as InstanceType<typeof AgentDevice>;
@@ -183,6 +203,9 @@ authenticatedAgentRouter.get("/jobs/next", async (request, response, next) => {
     agent.lastSeenAt = now;
     agent.status = "online";
     await agent.save();
+
+    const shopAvailability = await Shop.findById(agent.shopId).select("isOnline");
+    if (!shopAvailability?.isOnline) { response.status(204).end(); return; }
 
     const staleJobs = await PrintOrder.find({ shopId: agent.shopId, status: "printing", agentLeaseExpiresAt: { $lte: now } }).limit(50);
     const shop = staleJobs.length ? await Shop.findById(agent.shopId).select("fileRetentionHours") : null;
@@ -338,8 +361,7 @@ shopOwnerRouter.get("/devices", requireShopOwner, async (request, response, next
     const shop = await Shop.findOne({ ownerId: request.session.userId }).select("_id");
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
     const devices = await AgentDevice.find({ shopId: shop._id, status: { $ne: "revoked" } }).select("deviceName agentVersion status lastSeenAt createdAt").sort({ lastSeenAt: -1 });
-    // If the device is registered and not revoked, it is considered active on this PC
-    const staleBefore = Date.now() - (24 * 60 * 60 * 1000); // 24 hour active lease
+    const staleBefore = Date.now() - onlineWindowMs;
     response.json({ devices: devices.map((device) => ({
       id: String(device._id),
       deviceName: device.deviceName,
@@ -351,7 +373,7 @@ shopOwnerRouter.get("/devices", requireShopOwner, async (request, response, next
   } catch (error) { next(error); }
 });
 
-shopOwnerRouter.delete("/devices/:deviceId", requireShopOwner, async (request, response, next) => {
+shopOwnerRouter.delete("/devices/:deviceId", requireShopOwner, requireDesktopAgent, async (request, response, next) => {
   const parsed = revokeSchema.safeParse({ deviceId: request.params.deviceId });
   if (!parsed.success) { response.status(400).json({ error: "Choose a valid connected computer." }); return; }
   try {
