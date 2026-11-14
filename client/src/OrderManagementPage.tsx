@@ -2,16 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
   Check,
-  CircleHelp,
   Clock3,
   LoaderCircle,
-  LogOut,
   Printer,
-  QrCode,
   RefreshCw,
   RotateCcw,
   Settings2,
-  Store,
   X,
 } from "lucide-react";
 
@@ -21,6 +17,7 @@ type OrderStatus =
   | "needs_approval"
   | "queued"
   | "printing"
+  | "submitted"
   | "printed"
   | "failed"
   | "rejected"
@@ -69,7 +66,7 @@ type ShopInfo = {
 };
 type OrderOptions = MerchantOrder["options"];
 type Action = "confirm_payment" | "approve_order" | "mark_ready" | "requeue" | "reject" | "cancel";
-type Filter = "all" | "approval" | "queue" | "printing" | "cash" | "printed" | "failed";
+type Filter = "all" | "approval" | "queue" | "printing" | "submitted" | "cash" | "printed" | "failed";
 
 const photoLayouts = [
   { value: "single", label: "1 photo per page" },
@@ -86,6 +83,7 @@ const statusLabels: Record<OrderStatus, string> = {
   needs_approval: "Needs approval",
   queued: "Awaiting manual fulfillment",
   printing: "Legacy print status",
+  submitted: "Sent to printer · confirm paper",
   printed: "Ready for pickup",
   failed: "Previous fulfillment issue",
   rejected: "Rejected",
@@ -98,6 +96,7 @@ const filterLabels: Array<{ id: Filter; label: string }> = [
   { id: "approval", label: "Needs approval" },
   { id: "queue", label: "Manual fulfillment" },
   { id: "printing", label: "Legacy status" },
+  { id: "submitted", label: "Sent to printer" },
   { id: "cash", label: "Awaiting cash" },
   { id: "printed", label: "Printed" },
   { id: "failed", label: "Failed" },
@@ -124,6 +123,8 @@ function visibleInFilter(order: MerchantOrder, filter: Filter): boolean {
       return order.status === "queued";
     case "printing":
       return order.status === "printing";
+    case "submitted":
+      return order.status === "submitted";
     case "cash":
       return order.status === "awaiting_cash";
     case "printed":
@@ -157,10 +158,12 @@ function availableActions(order: MerchantOrder): Array<{ action: Action; label: 
       return [{ action: "mark_ready", label: "Mark ready for pickup", primary: true }, { action: "cancel", label: "Cancel order" }];
     case "printing":
       return [
-        { action: "mark_ready", label: "Mark ready for pickup", primary: true },
+        { action: "mark_ready", label: "Confirm paper came out", primary: true },
       ];
+    case "submitted":
+      return [{ action: "mark_ready", label: "Confirm printed / ready for pickup", primary: true }, { action: "requeue", label: "Retry print", primary: true }];
     case "failed":
-      return [{ action: "requeue", label: "Return to manual fulfillment", primary: true }, { action: "cancel", label: "Cancel order" }];
+      return [{ action: "requeue", label: "Retry print", primary: true }, { action: "cancel", label: "Cancel order" }];
     default:
       return [];
   }
@@ -233,12 +236,17 @@ export function OrderManagementPage() {
     approval: orders.filter((order) => order.status === "needs_approval" || order.status === "awaiting_payment").length,
     queue: orders.filter((order) => order.status === "queued").length,
     printing: orders.filter((order) => order.status === "printing").length,
+    submitted: orders.filter((order) => order.status === "submitted").length,
     cash: orders.filter((order) => order.status === "awaiting_cash").length,
     printed: orders.filter((order) => order.status === "printed").length,
     failed: orders.filter((order) => order.status === "failed").length,
   }), [orders]);
 
   async function updateOrder(order: MerchantOrder, action: Action) {
+    if (action === "requeue" && order.status === "submitted") {
+      const confirmed = window.confirm("Windows accepted the first print job, but paper output was not verified. Retry only after checking the printer queue; the first attempt may still print and create a duplicate.");
+      if (!confirmed) return;
+    }
     if ((action === "reject" || action === "cancel") && order.paymentStatus === "paid") {
       const confirmed = window.confirm("This order's payment is already confirmed. This action will not refund it. Continue only if you will arrange any refund directly with the customer.");
       if (!confirmed) return;
@@ -290,16 +298,6 @@ export function OrderManagementPage() {
       setError(reason instanceof Error ? reason.message : "Could not update print options.");
     } finally {
       setBusyOrderId("");
-    }
-  }
-
-  async function logout() {
-    try {
-      const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
-      if (!response.ok) throw new Error(await responseError(response));
-      window.location.assign("/");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not sign out.");
     }
   }
 

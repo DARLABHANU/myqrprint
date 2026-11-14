@@ -33,6 +33,7 @@ const statusSchema = z.enum([
   "needs_approval",
   "queued",
   "printing",
+  "submitted",
   "printed",
   "failed",
   "rejected",
@@ -51,7 +52,7 @@ function requireOwner(request: Request, response: Response, next: NextFunction) 
 merchantOrdersRouter.use(requireOwner);
 
 async function findOwnerShop(request: Request) {
-  return Shop.findOne({ ownerId: request.session.userId }).select("_id notificationPreferences fileRetentionHours");
+  return Shop.findOne({ ownerId: request.session.userId }).select("_id notificationPreferences fileRetentionHours autoPrint");
 }
 
 function orderSummary(order: InstanceType<typeof PrintOrder>, availableUploads: Set<string>) {
@@ -140,7 +141,7 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
     }
     let nextState;
     try {
-      nextState = transitionMerchantOrder(order, parsedBody.data.action);
+      nextState = transitionMerchantOrder(order, parsedBody.data.action, { autoPrint: shop.autoPrint });
     } catch (error) {
       response.status(409).json({
         error: error instanceof Error ? error.message : "This order cannot be changed in its current state.",
@@ -150,7 +151,7 @@ merchantOrdersRouter.patch("/orders/:orderId", async (request, response, next) =
 
     order.status = nextState.status;
     order.paymentStatus = nextState.paymentStatus;
-    if (["printed", "rejected", "cancelled"].includes(nextState.status)) {
+    if (["rejected", "cancelled", "printed"].includes(nextState.status)) {
       await CustomerUpload.updateMany({ orderId: order._id, state: "attached" }, { $set: { expiresAt: new Date() } });
     }
     order.events.push({

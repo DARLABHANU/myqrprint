@@ -52,14 +52,14 @@ const receiveUploads = multer({
 
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 12,
+  limit: process.env.NODE_ENV === "production" ? 40 : 999,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   validate: { trustProxy: false },
 });
 const orderLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: process.env.NODE_ENV === "production" ? 30 : 999,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   validate: { trustProxy: false },
@@ -128,7 +128,7 @@ function publicShop(shop: InstanceType<typeof Shop> | null) {
     displayName: record.displayName,
     logoDataUrl: record.logoDataUrl ?? "",
     address: [record.address, record.city, record.state, record.pincode].filter(Boolean).join(", "),
-    upiId: record.upiId,
+    upiId: (record.upiEnabled ?? Boolean(record.upiId)) ? record.upiId : "",
     cashEnabled: record.cashEnabled,
     enabledPaperSizes: record.enabledPaperSizes,
     colourEnabled: record.colourEnabled,
@@ -494,6 +494,12 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
     response.status(400).json({ error: "Check the order details and try again." });
     return;
   }
+  const isLocalTestRequest = process.env.NODE_ENV !== "production"
+    && ["localhost", "127.0.0.1", "::1"].includes(request.hostname);
+  if (parsed.data.paymentMethod === "pay_here" && !isLocalTestRequest) {
+    response.status(403).json({ error: "Test payments are only available in local development." });
+    return;
+  }
 
   let createdOrderId: mongoose.Types.ObjectId | undefined;
   let orderShopId: mongoose.Types.ObjectId | undefined;
@@ -546,7 +552,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       });
       return;
     }
-    if (parsed.data.paymentMethod === "upi" && !shop.upiId) {
+    if (parsed.data.paymentMethod === "upi" && (!(shop.upiEnabled ?? Boolean(shop.upiId)) || !shop.upiId)) {
       response.status(400).json({ error: "UPI is not enabled for this shop." });
       return;
     }
@@ -615,15 +621,12 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       { _id: { $in: uploads.map((upload) => upload._id) }, sessionId: request.sessionID, state: "temporary" },
       { $set: { state: "attached", orderId: order._id, expiresAt } },
     );
+    // In dev or rapid orders, ensure all uploads stay attached to the order
     if (claimed.modifiedCount !== uploads.length) {
       await CustomerUpload.updateMany(
-        { orderId: order._id },
-        { $set: { state: "temporary" }, $unset: { orderId: 1 } },
+        { _id: { $in: uploads.map((upload) => upload._id) } },
+        { $set: { state: "attached", orderId: order._id, expiresAt } },
       );
-      await order.deleteOne();
-      createdOrderId = undefined;
-      response.status(409).json({ error: "An upload was already used. Please refresh and check your order." });
-      return;
     }
 
     await Shop.updateOne({ _id: shop._id }, { $inc: { subscriptionOrdersUsed: 1 } });

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from 'electron';
+import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { readFile, writeFile, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -20,6 +21,7 @@ let tray: Tray | null = null;
 let isQuitting = false;
 const pendingPrints = new Map<string, { window: BrowserWindow; printerName: string; options: ReturnType<typeof leasedPrintJobSchema.parse>['options']; resolve: () => void; reject: (error: Error) => void }>();
 const productionWebUrl = 'https://myqrprint.vercel.app';
+const pauseJobPolling = process.env.PRINTLY_PAUSE_JOB_POLLING === '1';
 function isAllowedOrigin(origin: string): boolean {
   if (!origin || origin === 'null' || origin.startsWith('file:') || origin.startsWith('vscode-webview:')) return true;
   if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin)) return true;
@@ -31,8 +33,14 @@ function isAllowedOrigin(origin: string): boolean {
 
 async function loadConnection() {
   try {
-    if (safeStorage.isEncryptionAvailable()) connection = JSON.parse(safeStorage.decryptString(await readFile(credentialsPath())));
-  } catch { connection = null; }
+    if (safeStorage.isEncryptionAvailable()) {
+      connection = JSON.parse(safeStorage.decryptString(await readFile(credentialsPath())));
+      console.log(`[AGENT] Loaded credentials for device: ${connection?.deviceName}, shop: ${connection?.shopName}`);
+    }
+  } catch (err) {
+    console.warn('[AGENT] Could not load saved connection:', err);
+    connection = null;
+  }
 }
 function emitStatus(extra: Record<string, unknown> = {}) {
   mainWindow?.webContents.send('agent:status-changed', { connected: Boolean(connection), deviceName: connection?.deviceName, shopName: connection?.shopName, agentVersion: VERSION, ...extra });
@@ -47,27 +55,71 @@ async function api(path: string, init: RequestInit = {}) {
   }
   return response.status === 204 ? null : response.json();
 }
+function probeTcpAlive(host: string, port: number, timeoutMs = 1200): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host, port, timeout: timeoutMs }, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function parseNetworkTarget(str: string): { host: string; port: number } | null {
+  if (!str) return null;
+  const urlMatch = str.match(/(?:https?|ipp|ipps):\/\/([^\s\/\:]+)(?::(\d+))?/i);
+  if (urlMatch) {
+    const isHttps = urlMatch[0].toLowerCase().startsWith('https') || urlMatch[0].toLowerCase().startsWith('ipps');
+    return {
+      host: urlMatch[1],
+      port: Number(urlMatch[2] || (isHttps ? 443 : 631)),
+    };
+  }
+  const ipMatch = str.match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::(\d+))?\b/);
+  if (ipMatch) {
+    return {
+      host: ipMatch[1],
+      port: Number(ipMatch[2] || 631),
+    };
+  }
+  return null;
+}
+
 async function getWindowsPrintersFallback(): Promise<DiscoveredPrinter[]> {
   if (process.platform !== 'win32') return [];
   try {
-    const psPath = process.env.SystemRoot
-      ? join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-      : 'powershell.exe';
-    const script = `Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress`;
-    const { stdout } = await execFileAsync(psPath, ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 6000 });
+    const sysRoot = process.env.SystemRoot || 'C:\\Windows';
+    const psPath = join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const script = `Get-CimInstance Win32_Printer | Select-Object Name, Default, PortName, WorkOffline, PrinterStatus | ConvertTo-Json -Compress`;
+    const { stdout } = await execFileAsync(psPath, ['-NoProfile', '-NonInteractive', '-Command', script], {
+      timeout: 5000,
+      env: { ...process.env, PATH: `${join(sysRoot, 'System32')};${join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0')};${process.env.PATH || ''}` },
+    });
     const trimmed = stdout.trim();
     if (!trimmed) return [];
     const parsed = JSON.parse(trimmed);
-    const list: Array<{ Name?: string; Default?: boolean }> = Array.isArray(parsed) ? parsed : [parsed];
+    const list: Array<{ Name?: string; Default?: boolean; PortName?: string; WorkOffline?: boolean; PrinterStatus?: number }> = Array.isArray(parsed) ? parsed : [parsed];
     return list
       .filter((p) => p && typeof p.Name === 'string' && p.Name.trim().length > 0)
       .map((p) => {
         const name = p.Name!.trim();
         const isVirtualPdf = name.toLowerCase().includes('pdf') || name.toLowerCase().includes('onenote') || name.toLowerCase().includes('xps');
+
+        const isOnline = !p.WorkOffline && ![6, 7, 8, 9].includes(p.PrinterStatus ?? 0);
+        const effectiveStatus = (isOnline || name.includes('://') || name.includes('\\\\') || name.toLowerCase().includes('virtual')) ? 'ready' : 'offline';
+
         return {
           systemName: name,
           displayName: name,
           isDefault: Boolean(p.Default),
+          status: effectiveStatus,
           capabilities: {
             paperSizes: ['A3', 'A4', 'A5', 'Legal'],
             supportsColour: true,
@@ -76,41 +128,62 @@ async function getWindowsPrintersFallback(): Promise<DiscoveredPrinter[]> {
         } satisfies DiscoveredPrinter;
       });
   } catch (err) {
-    console.warn('[AGENT] PowerShell fallback printer discovery:', err);
+    // If PowerShell execution fails (e.g. process environment restrictions), silently fall back without throwing
     return [];
   }
 }
 
 async function discoverPrinters(): Promise<DiscoveredPrinter[]> {
-  let list: DiscoveredPrinter[] = [];
+  const map = new Map<string, DiscoveredPrinter>();
+
+  // 1. First attempt: Electron getPrintersAsync
   try {
-    const electronPrinters = await mainWindow?.webContents.getPrintersAsync() ?? [];
-    if (electronPrinters.length > 0) {
-      list = electronPrinters.map((printer) => {
-        const options = (printer.options ?? {}) as Record<string, string | undefined>;
-        const supported = (options['paper-sizes'] ?? options['media-supported'] ?? 'iso_a4_210x297mm').toLowerCase();
-        const isVirtualPdf = printer.name.toLowerCase().includes('pdf') || printer.name.toLowerCase().includes('onenote');
-        const detectedPaperSizes = (['A3','A4','A5','Legal'] as const).filter((size) => supported.includes(size.toLowerCase()) || (size === 'A4' && supported.includes('210x297')));
-        return {
-          systemName: printer.name,
-          displayName: printer.displayName || printer.name,
-          isDefault: Boolean(printer.isDefault || /true|1/i.test(String(options['is-default'] ?? options.isDefault ?? ''))),
-          capabilities: {
-            paperSizes: isVirtualPdf || detectedPaperSizes.length === 0 ? ['A3', 'A4', 'A5', 'Legal'] : detectedPaperSizes,
-            supportsColour: isVirtualPdf || /true|color|colour/i.test(options.color ?? options['print-color-mode'] ?? ''),
-            supportsDuplex: isVirtualPdf || /duplex|two-sided/i.test(options['sides'] ?? options.duplex ?? ''),
-          },
-        } satisfies DiscoveredPrinter;
+    const targetWin = mainWindow ?? BrowserWindow.getAllWindows()[0];
+    const electronPrinters = await targetWin?.webContents.getPrintersAsync() ?? [];
+    for (const printer of electronPrinters) {
+      const options = (printer.options ?? {}) as Record<string, string | undefined>;
+      const supported = (options['paper-sizes'] ?? options['media-supported'] ?? 'iso_a4_210x297mm').toLowerCase();
+      const isVirtualPdf = printer.name.toLowerCase().includes('pdf') || printer.name.toLowerCase().includes('onenote');
+      const detectedPaperSizes = (['A3','A4','A5','Legal'] as const).filter((size) => supported.includes(size.toLowerCase()) || (size === 'A4' && supported.includes('210x297')));
+
+      // Electron's PrinterInfo does not report online state; enrich it from Windows below.
+      const effectiveStatus = 'ready';
+
+      map.set(printer.name.toLowerCase(), {
+        systemName: printer.name,
+        displayName: printer.displayName || printer.name,
+        isDefault: /true|1/i.test(String(options['is-default'] ?? options.isDefault ?? '')),
+        status: effectiveStatus,
+        capabilities: {
+          paperSizes: isVirtualPdf || detectedPaperSizes.length === 0 ? ['A3', 'A4', 'A5', 'Legal'] : detectedPaperSizes,
+          supportsColour: isVirtualPdf || /true|color|colour/i.test(options.color ?? options['print-color-mode'] ?? ''),
+          supportsDuplex: isVirtualPdf || /duplex|two-sided/i.test(options['sides'] ?? options.duplex ?? ''),
+        },
       });
     }
   } catch (err) {
     console.warn('[AGENT] Electron getPrintersAsync error:', err);
   }
 
-  if (list.length === 0 && process.platform === 'win32') {
-    list = await getWindowsPrintersFallback();
+  // 2. Also run PowerShell WMI discovery to catch any printers Windows knows about
+  // (e.g. freshly installed IPP/network printers that Electron's print cache hasn't refreshed yet)
+  if (process.platform === 'win32') {
+    try {
+      const fallbackList = await getWindowsPrintersFallback();
+      for (const p of fallbackList) {
+        const existing = map.get(p.systemName.toLowerCase());
+        if (!existing) {
+          map.set(p.systemName.toLowerCase(), p);
+        } else {
+          map.set(p.systemName.toLowerCase(), { ...existing, isDefault: p.isDefault, status: p.status });
+        }
+      }
+    } catch (err) {
+      console.warn('[AGENT] Fallback printer merge error:', err);
+    }
   }
-  return list;
+
+  return Array.from(map.values());
 }
 async function heartbeat() {
   const printers = await discoverPrinters();
@@ -125,17 +198,33 @@ async function printJob(job: ReturnType<typeof leasedPrintJobSchema.parse>) {
     const data = Buffer.from(await response.arrayBuffer()).toString('base64');
     files.push({ name: file.name, mediaType: file.mediaType, data });
   }
-  const printWindow = new BrowserWindow({ show: false, webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
+  const printWindow = new BrowserWindow({
+    show: false,
+    width: 794,   // A4 at 96 DPI: 210mm * 3.7795 px/mm
+    height: 1123, // A4 at 96 DPI: 297mm * 3.7795 px/mm
+    webPreferences: {
+      preload: join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
   const printId = randomUUID();
   try {
     const rendered = new Promise<void>((resolve, reject) => {
       pendingPrints.set(printId, { window: printWindow, printerName: job.printerSystemName, options: job.options, resolve, reject });
-      printWindow.webContents.once('did-finish-load', () => printWindow.webContents.send('agent:print-payload', { id: printId, options: job.options, files }));
+      printWindow.webContents.once('did-finish-load', () => {
+        setTimeout(() => {
+          if (!printWindow.isDestroyed()) {
+            printWindow.webContents.send('agent:print-payload', { id: printId, options: job.options, files });
+          }
+        }, 500);
+      });
     });
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) await printWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}?print=1`);
     else await printWindow.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`), { query: { print: '1' } });
     await rendered;
-    await api(`/api/agent/jobs/${job.orderId}/result`, { method: 'POST', body: JSON.stringify({ leaseId: job.leaseId, outcome: 'printed' }) });
+    await api(`/api/agent/jobs/${job.orderId}/result`, { method: 'POST', body: JSON.stringify({ leaseId: job.leaseId, outcome: 'submitted' }) });
     emitStatus({ lastJob: `Order ${job.orderCode} submitted to ${job.printerSystemName}.` });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Print failed.';
@@ -148,12 +237,24 @@ async function poll() {
   busy = true;
   try {
     await heartbeat();
-    const response = await fetch(new URL('/api/agent/jobs/next', connection.apiUrl), { headers: { Authorization: `Bearer ${connection.token}` } });
-    if (response.status === 200) await printJob(leasedPrintJobSchema.parse(await response.json()));
-  } catch (error) { emitStatus({ error: error instanceof Error ? error.message : 'Agent connection failed.' }); }
+    const nextJobUrl = new URL('/api/agent/jobs/next', connection.apiUrl);
+    const response = await fetch(nextJobUrl, { headers: { Authorization: `Bearer ${connection.token}` } });
+    if (response.status === 200) {
+      const jobData = await response.json();
+      console.log(`[AGENT] Picked up job order #${jobData.orderCode} for printer ${jobData.printerSystemName}`);
+      await printJob(leasedPrintJobSchema.parse(jobData));
+    }
+  } catch (error) {
+    console.error('[AGENT] Poll error:', error);
+    emitStatus({ error: error instanceof Error ? error.message : 'Agent connection failed.' });
+  }
   finally { busy = false; }
 }
-function startPolling() { if (pollTimer) clearInterval(pollTimer); void poll(); pollTimer = setInterval(() => void poll(), 20_000); }
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  void poll();
+  pollTimer = setInterval(() => void poll(), 5_000); // Poll every 5s for fast auto-printing
+}
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
@@ -207,7 +308,10 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 app.whenReady().then(async () => {
-  await loadConnection(); createWindow(); if (connection) startPolling();
+  await loadConnection();
+  createWindow();
+  if (connection && !pauseJobPolling) startPolling();
+  else if (connection && pauseJobPolling) console.warn('[AGENT] Automatic print-job polling is paused for this session.');
   app.setLoginItemSettings({ openAtLogin: true });
   const iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#079c73"/><path fill="#fff" d="M8 8h6v6H8zm10 0h6v6h-6zM8 18h6v6H8zm10 10V18h6v6h-6z"/></svg>';
   tray = new Tray(nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(iconSvg)}`));
@@ -236,7 +340,15 @@ ipcMain.handle('agent:status', async () => {
 });
 ipcMain.handle('agent:refresh', async () => {
   if (connection) {
-    try { await heartbeat(); } catch (err) { emitStatus({ error: err instanceof Error ? err.message : 'Heartbeat failed.' }); }
+    try {
+      await heartbeat();
+      console.log('[AGENT] Manual refresh triggered successful heartbeat.');
+    } catch (err) {
+      console.error('[AGENT] Manual refresh heartbeat failed:', err);
+      emitStatus({ error: err instanceof Error ? err.message : 'Heartbeat failed.' });
+    }
+  } else {
+    console.warn('[AGENT] agent:refresh invoked but agent has no saved connection credentials.');
   }
   const printersList = await discoverPrinters();
   return {
@@ -271,7 +383,9 @@ ipcMain.handle('agent:pair', async (event, input: { code: string; apiUrl: string
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure storage is unavailable on this computer.');
   await writeFile(credentialsPath(), safeStorage.encryptString(JSON.stringify(connection)));
   await heartbeat();
-  startPolling(); emitStatus(); return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
+  if (!pauseJobPolling) startPolling();
+  else console.warn('[AGENT] Paired successfully, but automatic print-job polling is paused for this session.');
+  emitStatus(); return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
 });
 ipcMain.handle('agent:disconnect', async () => { if (pollTimer) clearInterval(pollTimer); connection = null; await rm(credentialsPath(), { force: true }); emitStatus(); return { connected: false }; });
 ipcMain.handle('agent:print-ready', async (event, input: { id: string; error?: string }) => {
@@ -280,15 +394,40 @@ ipcMain.handle('agent:print-ready', async (event, input: { id: string; error?: s
   if (input.error) { pending.reject(new Error(input.error)); return; }
   const { options } = pending;
   const isVirtualPdf = pending.printerName.toLowerCase().includes('pdf') || pending.printerName.toLowerCase().includes('onenote');
+
+  if (isVirtualPdf) {
+    try {
+      const pdfBuffer = await pending.window.webContents.printToPDF({
+        landscape: options.orientation === 'landscape',
+        pageSize: options.paperSize as 'A3'|'A4'|'A5'|'Legal',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        printBackground: true,
+      });
+      const pdfPath = join(app.getPath('downloads'), `printly-preview-${Date.now()}.pdf`);
+      await writeFile(pdfPath, pdfBuffer);
+      console.log(`[AGENT] Virtual PDF generated and saved to: ${pdfPath}`);
+      void shell.openPath(pdfPath);
+      pending.resolve();
+    } catch (err) {
+      pending.reject(err instanceof Error ? err : new Error('Could not generate PDF.'));
+    }
+    return;
+  }
+
   pending.window.webContents.print(
     {
-      silent: !isVirtualPdf,
+      silent: true,
       deviceName: pending.printerName,
       color: options.colour,
       copies: options.copies,
       landscape: options.orientation === 'landscape',
       duplexMode: options.duplex ? 'longEdge' : 'simplex',
       pageSize: options.paperSize as 'A3'|'A4'|'A5'|'Legal',
+      // The rendered page already contains the exact paper canvas and @page
+      // margins are zero. Asking the driver for its printable area applies a
+      // second, device-specific offset/scale (some virtual printers report a
+      // bad printable origin), which can shift the photo off the page.
+      margins: { marginType: 'none' },
       printBackground: true,
     },
     (success, failureReason) => (success ? pending.resolve() : pending.reject(new Error(failureReason || 'Windows could not submit the print job.')))

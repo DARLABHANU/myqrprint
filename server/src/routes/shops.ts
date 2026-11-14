@@ -28,7 +28,9 @@ const shopSettingsSchema = z.object({
     (value) => value === "" || /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z0-9.-]{2,64}$/.test(value),
     "Enter a valid UPI ID, for example shop@bank.",
   ),
+  upiEnabled: z.boolean(),
   cashEnabled: z.boolean(),
+  autoPrint: z.boolean().default(false),
   isOnline: z.boolean(),
   locationLockEnabled: z.boolean(),
   locationLatitude: z.number().min(-90).max(90).optional(),
@@ -51,7 +53,10 @@ const shopSettingsSchema = z.object({
   maxCopies: z.number().int().min(1).max(100),
   rates: z.record(z.enum(paperSizes), rateSchema),
 }).superRefine((value, context) => {
-  if (!value.cashEnabled && !value.upiId) {
+  if (value.upiEnabled && !value.upiId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["upiId"], message: "Enter your UPI ID before enabling UPI." });
+  }
+  if (!value.cashEnabled && !(value.upiEnabled && value.upiId)) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["upiId"],

@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
-  CircleHelp,
   CreditCard,
   Copy,
   Download,
@@ -14,13 +13,11 @@ import {
   Image as ImageIcon,
   Link2,
   LoaderCircle,
-  LogOut,
   MapPin,
   MessageCircle,
   Printer,
   QrCode,
   Save,
-  Settings2,
   ShieldCheck,
   Store,
 } from "lucide-react";
@@ -30,6 +27,7 @@ type User = {
   id: string;
   ownerName: string;
   email: string;
+  twoFactorEnabled?: boolean;
 };
 
 type Rate = {
@@ -52,7 +50,9 @@ type ShopSettings = {
   pincode: string;
   gstin: string;
   upiId: string;
+  upiEnabled: boolean;
   cashEnabled: boolean;
+  autoPrint: boolean;
   isOnline: boolean;
   locationLockEnabled: boolean;
   locationLatitude?: number;
@@ -96,7 +96,9 @@ function createEmptyShop(): ShopSettings {
     pincode: "",
     gstin: "",
     upiId: "",
+    upiEnabled: false,
     cashEnabled: true,
+    autoPrint: false,
     isOnline: true,
     locationLockEnabled: false,
     locationRadiusMeters: 200,
@@ -317,10 +319,6 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [quoteOptions, setQuoteOptions] = useState({ paperSize: "A4", pageCount: 4, copies: 1, colour: false, duplex: false });
-  const [quote, setQuote] = useState<{ amountPaise: number; billableUnits: number; unit: string } | null>(null);
-  const [quoteError, setQuoteError] = useState("");
-  const [quoting, setQuoting] = useState(false);
   const [copyingShopLink, setCopyingShopLink] = useState(false);
   const [posterSize, setPosterSize] = useState<"A4" | "A5" | "sticker">("A4");
   const [posterStyle, setPosterStyle] = useState<"classic" | "minimal" | "bold">("classic");
@@ -339,7 +337,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
         setUser(account);
         const { shop: savedShop } = await requestJson<{ shop: ShopSettings }>("/api/shops/me");
         const rates = { ...createEmptyShop().rates, ...savedShop.rates };
-        setShop({ ...createEmptyShop(), ...savedShop, discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
+        setShop({ ...createEmptyShop(), ...savedShop, autoPrint: savedShop.autoPrint ?? false, upiEnabled: savedShop.upiEnabled ?? Boolean(savedShop.upiId), discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
       } catch (reason) {
         if (reason instanceof Error && reason.message.includes("Sign in")) {
           window.location.assign("/login");
@@ -356,7 +354,6 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
   function updateShop<K extends keyof ShopSettings>(key: K, value: ShopSettings[K]) {
     setShop((current) => ({ ...current, [key]: value }));
     setNotice("");
-    setQuote(null);
   }
 
   async function setLogoFromFile(file?: File) {
@@ -389,7 +386,6 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
       rates: { ...current.rates, [size]: { ...current.rates[size], [key]: paise } },
     }));
     setNotice("");
-    setQuote(null);
   }
 
   function togglePaperSize(size: string) {
@@ -418,7 +414,9 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
           pincode: shop.pincode,
           gstin: shop.gstin,
           upiId: shop.upiId,
+          upiEnabled: shop.upiEnabled,
           cashEnabled: shop.cashEnabled,
+          autoPrint: shop.autoPrint,
           isOnline: shop.isOnline,
           locationLockEnabled: shop.locationLockEnabled,
           locationLatitude: shop.locationLatitude,
@@ -450,30 +448,13 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
     }
   }
 
-  async function getQuote() {
-    setQuoteError("");
-    setQuote(null);
-    setQuoting(true);
+  async function setTwoFactor(enabled: boolean) {
+    setError(""); setNotice("");
     try {
-      const result = await requestJson<typeof quote>("/api/shops/quote", {
-        method: "POST",
-        body: JSON.stringify(quoteOptions),
-      });
-      setQuote(result);
-    } catch (reason) {
-      setQuoteError(reason instanceof Error ? reason.message : "Unable to calculate this quote.");
-    } finally {
-      setQuoting(false);
-    }
-  }
-
-  async function logout() {
-    try {
-      await requestJson<void>("/api/auth/logout", { method: "POST" });
-      window.location.assign("/");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to sign out.");
-    }
+      const result = await requestJson<{ enabled: boolean }>("/api/auth/two-factor", { method: "POST", body: JSON.stringify({ enabled }) });
+      setUser((current) => current ? { ...current, twoFactorEnabled: result.enabled } : current);
+      setNotice(result.enabled ? "Two-step verification enabled." : "Two-step verification disabled.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not update sign-in security."); }
   }
 
   async function changePassword(event: FormEvent<HTMLFormElement>) {
@@ -620,6 +601,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
               {([ ["current", "Current password", currentPassword, setCurrentPassword, "current-password"], ["next", "New password", newPassword, setNewPassword, "new-password"], ["confirm", "Confirm new password", confirmNewPassword, setConfirmNewPassword, "new-password"] ] as const).map(([key, label, value, setter, autoComplete]) => <label className="password-setting-field" key={key}>{label}<span className="password-input-wrap"><input required type={visiblePasswords[key] ? "text" : "password"} minLength={key === "current" ? undefined : 12} maxLength={128} autoComplete={autoComplete} value={value} onChange={(event) => setter(event.target.value)}/><button type="button" aria-label={`${visiblePasswords[key] ? "Hide" : "Show"} ${label.toLowerCase()}`} onClick={() => setVisiblePasswords((current) => ({ ...current, [key]: !current[key] }))}>{visiblePasswords[key] ? <EyeOff size={16}/> : <Eye size={16}/>}</button></span></label>)}
               <div className="security-save-row"><span>At least 12 characters recommended.</span><button className="button button-dark" type="submit" disabled={changingPassword}>{changingPassword ? <LoaderCircle className="spin" size={15}/> : <ShieldCheck size={15}/>}Update password</button></div>
             </form></section>
+            <section className="settings-card"><div className="settings-card-heading"><div><h2>2-step verification</h2><p>Password, 2-step verification and active sessions.</p></div></div><label className="toggle-row"><span><b>Ask for OTP at login</b><small>Every login needs a 6-digit code emailed to your registered email, as well as your password.</small></span><input type="checkbox" checked={Boolean(user?.twoFactorEnabled)} onChange={(event) => void setTwoFactor(event.target.checked)}/><i/></label></section>
           </div>
 
           <form onSubmit={saveSettings}>
@@ -710,18 +692,17 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
             <section className="settings-card" id="payment-settings">
               <div className="settings-card-heading"><span className="settings-icon"><CreditCard size={18} /></span><div><h2>Payment setting</h2><p>Choose which payment methods customers see on your order page.</p></div><span className="step-badge">03</span></div>
               <div className="payment-settings">
-                <article className={`shop-payment-method${shop.upiId ? " configured" : ""}`}>
+                <article className="shop-payment-method"><div className="shop-payment-method-heading"><span className="shop-payment-symbol gateway"><Printer size={15}/></span><div><b>Auto print</b><small>Automatically send confirmed UPI orders to the printer</small></div><label className="toggle-switch-control"><input aria-label="Auto print UPI orders" type="checkbox" checked={shop.autoPrint} onChange={(event) => updateShop("autoPrint", event.target.checked)} /><i/></label></div><p className="shop-payment-help">When off, confirmed UPI orders wait for your approval. Cash orders always wait until you confirm cash at the counter.</p></article>
+                <article className={`shop-payment-method${shop.upiEnabled && shop.upiId ? " configured" : ""}`}>
                   <div className="shop-payment-method-heading">
                     <span className="shop-payment-symbol upi">▦</span>
                     <div>
                       <b>UPI payment</b>
                       <small>Customer pays directly to your personal UPI account</small>
                     </div>
-                    <span className={`shop-payment-state${shop.upiId ? " ready" : ""}`}>
-                      {shop.upiId ? "Enabled" : "Not set up"}
-                    </span>
+                    <label className="toggle-switch-control"><input aria-label="UPI payment" type="checkbox" checked={shop.upiEnabled} onChange={(event) => updateShop("upiEnabled", event.target.checked)} /><i/></label>
                   </div>
-                  <label className="upi-field" htmlFor="upiId">
+                  {shop.upiEnabled ? <label className="upi-field" htmlFor="upiId">
                     Shop UPI ID
                     <input
                       id="upiId"
@@ -733,9 +714,9 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
                     <small>
                       Enter your personal or business UPI ID. When customers place orders via UPI on your customer page, they will be prompted with your personal payment QR code generated for the exact bill amount.
                     </small>
-                  </label>
+                  </label> : <p className="shop-payment-help">UPI is hidden from customers until you turn it on.</p>}
 
-                  {shop.upiId ? (
+                  {shop.upiEnabled && shop.upiId ? (
                     <div style={{ marginTop: 14, padding: "14px 16px", background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 16 }}>
                       <div style={{ background: "#ffffff", padding: 8, borderRadius: 10, border: "1px solid #e2e8f0", display: "inline-block", flexShrink: 0 }}>
                         <QRCodeSVG
@@ -757,24 +738,9 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
                   ) : null}
                 </article>
                 <article className={`shop-payment-method${shop.cashEnabled ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol cash">⌂</span><div><b>Cash at counter</b><small>Customer pays when they collect the print</small></div><label className="toggle-switch-control"><input type="checkbox" checked={shop.cashEnabled} onChange={(event) => updateShop("cashEnabled", event.target.checked)} /><i/></label></div>{shop.cashEnabled && <p className="shop-payment-help">Orders stay marked as unpaid until you collect cash and confirm the payment.</p>}</article>
+                <article className="shop-payment-method shop-payment-gateway-hold"><div className="shop-payment-method-heading"><span className="shop-payment-symbol gateway"><CreditCard size={15}/></span><div><b>Razorpay</b><small>Card · Netbanking · Wallet</small></div><span className="shop-payment-state">On hold</span></div><p className="shop-payment-help">Online gateway checkout is not enabled. Customers can pay by your UPI ID or cash at pickup.</p></article>
                 <div className="payment-note"><ShieldCheck size={16} /> UPI and cash payments go directly to your shop. Printly does not process customer payments or take a commission.</div>
               </div>
-            </section>
-
-            <section className="settings-card quote-card">
-              <div className="settings-card-heading"><span className="settings-icon"><CreditCard size={18} /></span><div><h2>Try a sample quote</h2><p>The server calculates from your saved rates; the browser cannot set the final price.</p></div><span className="step-badge">TEST</span></div>
-              <div className="quote-controls">
-                <label>Paper size<select value={quoteOptions.paperSize} onChange={(event) => { setQuoteOptions({ ...quoteOptions, paperSize: event.target.value }); setQuote(null); }}><option value="A4">A4</option><option value="A5">A5</option><option value="Legal">Legal</option></select></label>
-                <label>Pages<input type="number" min="1" max="1000" value={quoteOptions.pageCount} onChange={(event) => { setQuoteOptions({ ...quoteOptions, pageCount: Number(event.target.value) }); setQuote(null); }} /></label>
-                <label>Copies<input type="number" min="1" max={shop.maxCopies} value={quoteOptions.copies} onChange={(event) => { setQuoteOptions({ ...quoteOptions, copies: Number(event.target.value) }); setQuote(null); }} /></label>
-                <button className="button button-dark quote-button" type="button" disabled={quoting} onClick={() => void getQuote()}>{quoting ? <LoaderCircle className="spin" size={15} /> : null}Calculate</button>
-              </div>
-              <div className="quote-toggles">
-                <label><input type="checkbox" checked={quoteOptions.colour} disabled={!shop.colourEnabled} onChange={(event) => { setQuoteOptions({ ...quoteOptions, colour: event.target.checked }); setQuote(null); }} /> Colour</label>
-                <label><input type="checkbox" checked={quoteOptions.duplex} disabled={!shop.duplexEnabled} onChange={(event) => { setQuoteOptions({ ...quoteOptions, duplex: event.target.checked }); setQuote(null); }} /> Double-sided</label>
-              </div>
-              {quote && <div className="quote-result" role="status"><span>Quote for {quote.billableUnits} {quote.unit}</span><b>₹{(quote.amountPaise / 100).toFixed(2)}</b></div>}
-              {quoteError && <div className="form-alert quote-error" role="alert">{quoteError}</div>}
             </section>
 
             <div className="settings-save-row">

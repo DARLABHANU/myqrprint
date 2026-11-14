@@ -104,6 +104,16 @@ test("merchant confirmation marks UPI as paid and holds the order for approval",
   );
 });
 
+test("merchant confirmation auto-queues UPI when auto print is enabled", () => {
+  const result = transitionMerchantOrder({ status: "awaiting_payment", paymentMethod: "upi", paymentStatus: "unverified" }, "confirm_payment", { autoPrint: true });
+  assert.deepEqual(result, { status: "queued", paymentMethod: "upi", paymentStatus: "paid" });
+});
+
+test("cash orders enter the print queue only after the shop confirms cash", () => {
+  const result = transitionMerchantOrder({ status: "awaiting_cash", paymentMethod: "cash", paymentStatus: "awaiting_cash" }, "confirm_payment");
+  assert.deepEqual(result, { status: "queued", paymentMethod: "cash", paymentStatus: "paid" });
+});
+
 test("merchant approves a paid order for manual fulfillment", () => {
   const approved = transitionMerchantOrder({
     status: "needs_approval",
@@ -120,8 +130,18 @@ test("merchant cannot mark an unpaid order ready for pickup", () => {
       paymentMethod: "cash",
       paymentStatus: "awaiting_cash",
     }, "mark_ready"),
-    /Only a paid order in manual fulfillment/,
+    /Only a paid order in the print workflow/,
   );
+});
+
+test("shopkeeper can retry a paid failed print without discarding its order", () => {
+  const retry = transitionMerchantOrder({ status: "failed", paymentMethod: "cash", paymentStatus: "paid" }, "requeue");
+  assert.equal(retry.status, "queued");
+});
+
+test("shopkeeper can retry a submitted print that did not produce paper", () => {
+  const retry = transitionMerchantOrder({ status: "submitted", paymentMethod: "upi", paymentStatus: "paid" }, "requeue");
+  assert.equal(retry.status, "queued");
 });
 
 test("merchant moves a paid order from manual fulfillment to ready for pickup", () => {

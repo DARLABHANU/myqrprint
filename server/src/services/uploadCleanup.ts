@@ -20,7 +20,7 @@ export async function cleanupExpiredUploads(): Promise<void> {
   const expiredUploads = await CustomerUpload.find({ expiresAt: { $lte: now } }).select("_id storageKey orderId cloudinaryPublicId cloudinaryResourceType");
   const expiredOrderIds = [...new Set(expiredUploads.flatMap((upload) => upload.orderId ? [String(upload.orderId)] : []))];
   const pendingStatuses = ["awaiting_payment", "awaiting_cash"] as const;
-  const terminalStatuses = ["printed", "failed", "rejected", "cancelled", "expired"] as const;
+  const terminalStatuses = ["submitted", "printed", "failed", "rejected", "cancelled", "expired"] as const;
 
   if (expiredOrderIds.length) {
     await PrintOrder.updateMany(

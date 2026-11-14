@@ -6,7 +6,6 @@ import {
   Clock,
   Copy,
   Download,
-  ExternalLink,
   FileText,
   Monitor,
   MoreVertical,
@@ -15,8 +14,6 @@ import {
   Printer,
   RefreshCw,
   Trash2,
-  Wifi,
-  WifiOff,
   X,
   Zap,
 } from "lucide-react";
@@ -122,6 +119,12 @@ export function PrinterManagementPage() {
   async function loadData() {
     setError("");
     try {
+      if (window.printly?.refresh) {
+        await window.printly.refresh().catch(() => {});
+        // Brief pause to allow the server to process the heartbeat payload
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
       const [printersRes, devicesRes, shopRes] = await Promise.all([
         fetch("/api/shops/printers", { credentials: "same-origin" }),
         fetch("/api/agent/devices", { credentials: "same-origin" }),
@@ -619,6 +622,7 @@ export function PrinterManagementPage() {
                 <button
                   type="button"
                   onClick={handleGeneratePairingCode}
+                  disabled={generatingCode}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -633,7 +637,7 @@ export function PrinterManagementPage() {
                     cursor: "pointer",
                   }}
                 >
-                  <Zap size={13} /> Pair This PC
+                  <Zap size={13} /> {generatingCode ? "Pairing…" : "Pair This PC"}
                 </button>
               )}
 
@@ -681,6 +685,7 @@ export function PrinterManagementPage() {
               <button
                 type="button"
                 onClick={handleGeneratePairingCode}
+                disabled={generatingCode}
                 style={{
                   padding: "8px 18px",
                   borderRadius: 8,
@@ -692,7 +697,7 @@ export function PrinterManagementPage() {
                   cursor: "pointer",
                 }}
               >
-                {isInsideElectron ? "⚡ Connect This Computer Now" : "Get 6-digit Pairing Code"}
+                {generatingCode ? "Connecting…" : isInsideElectron ? "⚡ Connect This Computer Now" : "Get 6-digit Pairing Code"}
               </button>
             </div>
           ) : (
@@ -852,10 +857,20 @@ export function PrinterManagementPage() {
                                   color: "#0f172a",
                                 }}
                               >
-                                <Printer size={13} style={{ color: isPdf ? "#10b981" : "#64748b" }} />
+                                <Printer size={13} style={{ color: p.status === "ready" ? "#10b981" : "#ef4444" }} />
                                 <span>{p.name}</span>
+                                <span style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  color: p.status === "ready" ? "#15803d" : "#dc2626",
+                                  background: p.status === "ready" ? "#dcfce7" : "#fee2e2",
+                                  padding: "1px 5px",
+                                  borderRadius: 4
+                                }}>
+                                  {p.status === "ready" ? "✓ Online" : "Offline"}
+                                </span>
                                 {isPdf && (
-                                  <span style={{ fontSize: 10, fontWeight: 700, color: "#10b981", background: "#dcfce7", padding: "1px 5px", borderRadius: 4 }}>
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: "#0284c7", background: "#e0f2fe", padding: "1px 5px", borderRadius: 4 }}>
                                     Virtual PDF
                                   </span>
                                 )}

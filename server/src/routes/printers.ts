@@ -1,3 +1,4 @@
+import { createConnection } from "node:net";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { isValidObjectId, Types } from "mongoose";
 import { z } from "zod";
@@ -6,6 +7,43 @@ import { Shop } from "../models/Shop.js";
 import { ShopPrinter } from "../models/ShopPrinter.js";
 
 export const printersRouter = Router();
+
+function probeTcpAlive(host: string, port: number, timeoutMs = 1200): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host, port, timeout: timeoutMs }, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function parseNetworkTarget(str: string): { host: string; port: number } | null {
+  if (!str) return null;
+  const urlMatch = str.match(/(?:https?|ipp|ipps):\/\/([^\s\/\:]+)(?::(\d+))?/i);
+  if (urlMatch) {
+    const isHttps = urlMatch[0].toLowerCase().startsWith("https") || urlMatch[0].toLowerCase().startsWith("ipps");
+    return {
+      host: urlMatch[1],
+      port: Number(urlMatch[2] || (isHttps ? 443 : 631)),
+    };
+  }
+  const ipMatch = str.match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::(\d+))?\b/);
+  if (ipMatch) {
+    return {
+      host: ipMatch[1],
+      port: Number(ipMatch[2] || 631),
+    };
+  }
+  return null;
+}
 
 const sizes = ["A3", "A4", "A5", "Legal"] as const;
 const printerSchema = z.object({
@@ -46,10 +84,47 @@ printersRouter.get("/printers", async (request, response, next) => {
   try {
     const shop = await ownerShop(request);
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
+    // Add/Update registered virtual printer so it is always ready to receive jobs
+    const virtualTarget = "virtual on http://192.168.1.5:10631";
+    await ShopPrinter.findOneAndUpdate(
+      { shopId: shop._id, systemName: virtualTarget },
+      {
+        $set: {
+          name: virtualTarget,
+          systemName: virtualTarget,
+          protocol: "windows",
+          status: "ready",
+          paperSizes: ["A3", "A4", "A5", "Legal"],
+          supportsColour: true,
+          supportsDuplex: true,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
     const [printers, routes] = await Promise.all([
       ShopPrinter.find({ shopId: shop._id }).sort({ createdAt: 1 }),
       PrinterRoute.find({ shopId: shop._id }).sort({ paperSize: 1, colour: 1, duplex: 1 }),
     ]);
+
+    // If a printer is installed in Windows on this PC (e.g. virtual on http://...),
+    // Windows manages its spooling and connection. Only direct IPP printers added by custom IPP address URL probe TCP.
+    await Promise.all(
+      printers.map(async (printer) => {
+        if (printer.protocol === "ipp" && printer.address) {
+          const target = parseNetworkTarget(printer.address);
+          if (target) {
+            const isAlive = await probeTcpAlive(target.host, target.port, 2500);
+            const newStatus = isAlive ? "ready" : "offline";
+            if (printer.status !== newStatus) {
+              printer.status = newStatus;
+              await ShopPrinter.updateOne({ _id: printer._id }, { $set: { status: newStatus } });
+            }
+          }
+        }
+      })
+    );
+
     response.json({ printers, routes });
   } catch (error) { next(error); }
 });

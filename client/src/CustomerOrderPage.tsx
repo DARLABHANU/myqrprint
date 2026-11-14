@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
-  ArrowLeft,
-  ArrowRight,
   Check,
   CheckCircle2,
-  ChevronDown,
   Clock,
   Copy,
-  CreditCard,
-  ExternalLink,
   FileImage,
   FileText,
-  Image as ImageIcon,
   LoaderCircle,
   Lock,
   Minus,
   Plus,
+  Printer,
   QrCode,
   ShieldCheck,
   Smartphone,
@@ -100,6 +95,7 @@ const layouts = [
 ];
 
 const money = (paise: number) => `₹${(paise / 100).toFixed(paise % 100 === 0 ? 0 : 2)}`;
+const localTestPaymentsEnabled = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 
 function createIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -142,7 +138,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
     orientation: "portrait",
     pageRange: "",
   });
-  const [selectedPayment, setSelectedPayment] = useState<"upi" | "cash" | "pay_here">("pay_here");
+  const [selectedPayment, setSelectedPayment] = useState<"upi" | "cash" | "pay_here">("cash");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [order, setOrder] = useState<OrderConfirmation | null>(null);
   const [error, setError] = useState("");
@@ -559,13 +555,15 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
   );
 
   const effectivePayment: "upi" | "cash" | "pay_here" =
-    selectedPayment === "pay_here"
+    selectedPayment === "pay_here" && localTestPaymentsEnabled
       ? "pay_here"
       : shop.upiId && selectedPayment === "upi"
         ? "upi"
         : shop.cashEnabled
           ? "cash"
-          : "pay_here";
+          : shop.upiId
+            ? "upi"
+            : "cash";
 
   // Standard NPCI Personal UPI Payment URI
   const currentAmount = order ? order.amountPaise / 100 : quote ? quote.amountPaise / 100 : 0;
@@ -710,7 +708,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
               </div>
               <span style={{ fontSize: 12, fontWeight: 700, color: order.paymentStatus === "paid" ? "#16a34a" : "#ea580c" }}>
                 {order.paymentStatus === "paid"
-                  ? "✓ Payment Confirmed · Auto-printing"
+                  ? order.status === "needs_approval" ? "✓ Payment confirmed · Waiting for shop approval" : order.status === "submitted" ? "✓ Sent to printer · Awaiting shop confirmation" : order.status === "failed" ? "✓ Payment confirmed · Print retry needed" : "✓ Payment Confirmed · Print queued"
                   : order.paymentMethod === "upi"
                     ? "Waiting for UPI Verification"
                     : "Cash Due at Counter"}
@@ -721,8 +719,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
             {order.paymentStatus === "paid" && (
               <div
                 style={{
-                  background: order.status === "printed" ? "#ecfdf5" : "#eff6ff",
-                  border: order.status === "printed" ? "1px solid #a7f3d0" : "1px solid #bfdbfe",
+                  background: order.status === "printed" ? "#ecfdf5" : order.status === "failed" ? "#fff1f2" : "#eff6ff",
+                  border: order.status === "printed" ? "1px solid #a7f3d0" : order.status === "failed" ? "1px solid #fecdd3" : "1px solid #bfdbfe",
                   borderRadius: 12,
                   padding: "12px 16px",
                   marginBottom: 20,
@@ -730,7 +728,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 10,
-                  color: order.status === "printed" ? "#065f46" : "#1e40af",
+                  color: order.status === "printed" ? "#065f46" : order.status === "failed" ? "#9f1239" : "#1e40af",
                   fontSize: 13,
                   fontWeight: 600,
                 }}
@@ -745,6 +743,12 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                     <LoaderCircle className="spin" size={18} color="#2563eb" />
                     <span>🖨️ Printing on your printer right now…</span>
                   </>
+                ) : order.status === "submitted" ? (
+                  <><Printer size={18} color="#2563eb" /><span>Sent to the printer. The shop is confirming the pages came out.</span></>
+                ) : order.status === "failed" ? (
+                  <><X size={18} color="#e11d48" /><span>Printing needs attention. The shop can retry your order.</span></>
+                ) : order.status === "needs_approval" ? (
+                  <><Clock size={18} color="#2563eb" /><span>Payment confirmed. Waiting for the shop to approve printing.</span></>
                 ) : (
                   <>
                     <Zap size={18} color="#2563eb" />
@@ -818,6 +822,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                   </button>
                 </div>
                 {claimMessage && <div style={{ color: "#16a34a", fontSize: 12, marginTop: 8, fontWeight: 600 }}>{claimMessage}</div>}
+              {claimError && <div role="alert" style={{ color: "#b42318", fontSize: 12, marginTop: 8 }}>{claimError}</div>}
+              {statusError && <div role="status" style={{ color: "#9a6700", fontSize: 12, marginTop: 8 }}>{statusError}</div>}
               </div>
             )}
 
@@ -1713,7 +1719,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                 Payment method
               </label>
 
-              {/* Option 1: Pay Here (Instant Auto-Print) */}
+              {localTestPaymentsEnabled && <>
+              {/* Local-only simulated payment for print-flow development */}
               <div
                 onClick={() => setSelectedPayment("pay_here")}
                 style={{
@@ -1792,7 +1799,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                 </div>
               </div>
 
-              {/* Option 2: UPI */}
+              </>}
+              {/* UPI */}
               {shop.upiId && (
                 <div
                   onClick={() => {

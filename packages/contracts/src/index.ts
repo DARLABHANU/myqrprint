@@ -7,6 +7,7 @@ export const printOrderStatuses = [
   "needs_approval",
   "queued",
   "printing",
+  "submitted",
   "printed",
   "failed",
   "rejected",
@@ -38,6 +39,7 @@ export const discoveredPrinterSchema = z.object({
   systemName: z.string().trim().min(1).max(200),
   displayName: z.string().trim().min(1).max(200),
   isDefault: z.boolean().default(false),
+  status: z.enum(["ready", "offline"]).default("ready"),
   capabilities: printerCapabilitiesSchema,
 }).strict();
 
@@ -80,7 +82,7 @@ export const leasedPrintJobSchema = z.object({
 
 export const printJobResultSchema = z.object({
   leaseId: z.string().min(1),
-  outcome: z.enum(["printed", "failed"]),
+  outcome: z.enum(["submitted", "failed"]),
   spoolerJobIds: z.array(z.string().max(120)).max(10).default([]),
   errorCode: z.string().trim().max(80).optional(),
   errorMessage: z.string().trim().max(240).optional(),

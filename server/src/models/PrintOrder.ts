@@ -29,7 +29,7 @@ const printOrderSchema = new Schema(
     idempotencyKey: { type: String, required: true },
     status: {
       type: String,
-      enum: ["awaiting_payment", "awaiting_cash", "needs_approval", "queued", "printing", "printed", "failed", "rejected", "cancelled", "expired"],
+      enum: ["awaiting_payment", "awaiting_cash", "needs_approval", "queued", "printing", "submitted", "printed", "failed", "rejected", "cancelled", "expired"],
       required: true,
     },
     paymentMethod: { type: String, enum: ["upi", "cash", "pay_here"], required: true },

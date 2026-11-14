@@ -23,7 +23,7 @@ const uploadDirectory = join(process.cwd(), "data", "uploads");
 const pairingWindowMs = 10 * 60 * 1000;
 const accessTokenLifetimeMs = 90 * 24 * 60 * 60 * 1000;
 const printLeaseMs = 10 * 60 * 1000;
-const onlineWindowMs = 90 * 1000;
+const onlineWindowMs = 5 * 60 * 1000;
 
 const pairingLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -137,7 +137,11 @@ authenticatedAgentRouter.get("/me", (_request, response) => {
 
 authenticatedAgentRouter.post("/heartbeat", async (request, response, next) => {
   const parsed = agentHeartbeatSchema.safeParse(request.body);
-  if (!parsed.success) { response.status(400).json({ error: "The computer sent an invalid printer list." }); return; }
+  if (!parsed.success) {
+    console.warn("[AGENT] Invalid heartbeat payload:", parsed.error.issues);
+    response.status(400).json({ error: "The computer sent an invalid printer list." });
+    return;
+  }
   const agent = response.locals.agent as InstanceType<typeof AgentDevice>;
   try {
     const now = new Date();
@@ -172,7 +176,7 @@ authenticatedAgentRouter.post("/heartbeat", async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
-authenticatedAgentRouter.get("/jobs/next", async (_request, response, next) => {
+authenticatedAgentRouter.get("/jobs/next", async (request, response, next) => {
   const agent = response.locals.agent as InstanceType<typeof AgentDevice>;
   try {
     const now = new Date();
@@ -196,23 +200,29 @@ authenticatedAgentRouter.get("/jobs/next", async (_request, response, next) => {
       }
     }
 
-    const candidates = await PrintOrder.find({ shopId: agent.shopId, status: "queued", paymentStatus: "paid" }).sort({ createdAt: 1 }).limit(40);
+    const candidates = await PrintOrder.find({
+      shopId: agent.shopId,
+      status: "queued",
+      paymentStatus: "paid",
+    }).sort({ createdAt: 1 }).limit(40);
+    // Queue check performed
     for (const candidate of candidates) {
       const options = candidate.options!;
       const route = await PrinterRoute.findOne({ shopId: agent.shopId, paperSize: options.paperSize, colour: options.colour, duplex: options.duplex });
       let printer = null;
       if (route) {
-        printer = await ShopPrinter.findOne({ _id: route.printerId, shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", systemName: { $type: "string" } });
+        printer = await ShopPrinter.findOne({ _id: route.printerId, shopId: agent.shopId });
       }
       if (!printer) {
-        // Fallback: use default Windows printer on this PC, or any Windows printer
-        printer = (await ShopPrinter.findOne({ shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", isDefault: true, systemName: { $type: "string" } }))
-          ?? (await ShopPrinter.findOne({ shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", systemName: { $type: "string" } }));
+        // Fallback: match virtual on http printer, or default printer, or any printer in shop
+        printer = (await ShopPrinter.findOne({ shopId: agent.shopId, systemName: /virtual/i }))
+          ?? (await ShopPrinter.findOne({ shopId: agent.shopId, isDefault: true, systemName: { $type: "string" } }))
+          ?? (await ShopPrinter.findOne({ shopId: agent.shopId, systemName: { $type: "string" } }));
       }
       if (!printer?.systemName) continue;
       const leaseId = randomUUID();
       const claimed = await PrintOrder.findOneAndUpdate(
-        { _id: candidate._id, shopId: agent.shopId, status: "queued", paymentStatus: "paid" },
+        { _id: candidate._id, shopId: agent.shopId, status: candidate.status, paymentStatus: "paid" },
         { $set: {
           status: "printing",
           assignedPrinterId: printer._id,
@@ -299,14 +309,14 @@ authenticatedAgentRouter.post("/jobs/:orderId/result", async (request, response,
     order.status = parsed.data.outcome;
     order.agentLeaseId = undefined;
     order.agentLeaseExpiresAt = undefined;
-    const detail = parsed.data.outcome === "printed"
-      ? `The Windows print spooler accepted the job on attempt ${order.printAttempts}.`
+    const detail = parsed.data.outcome === "submitted"
+      ? `Windows accepted the job into the print queue on attempt ${order.printAttempts}. Confirm the paper came out before marking ready.`
       : (parsed.data.errorMessage ?? "The Windows printer reported an error.").slice(0, 240);
-    order.events.push({ type: parsed.data.outcome === "printed" ? "agent_print_submitted" : "agent_print_failed", actorType: "system", timestamp: now, note: detail });
+    order.events.push({ type: parsed.data.outcome === "submitted" ? "agent_print_submitted" : "agent_print_failed", actorType: "system", timestamp: now, note: detail });
     await order.save();
     await CustomerUpload.updateMany(
       { _id: { $in: order.files.map((file) => file.uploadId) }, orderId: order._id, state: "attached" },
-      { $set: { expiresAt: parsed.data.outcome === "printed" ? now : new Date(now.getTime() + Number(shop.fileRetentionHours) * 60 * 60 * 1000) } },
+      { $set: { expiresAt: new Date(now.getTime() + Number(shop.fileRetentionHours) * 60 * 60 * 1000) } },
     );
     response.json({ orderId: String(order._id), status: order.status, note: detail });
   } catch (error) { next(error); }
@@ -328,7 +338,8 @@ shopOwnerRouter.get("/devices", requireShopOwner, async (request, response, next
     const shop = await Shop.findOne({ ownerId: request.session.userId }).select("_id");
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
     const devices = await AgentDevice.find({ shopId: shop._id, status: { $ne: "revoked" } }).select("deviceName agentVersion status lastSeenAt createdAt").sort({ lastSeenAt: -1 });
-    const staleBefore = Date.now() - onlineWindowMs;
+    // If the device is registered and not revoked, it is considered active on this PC
+    const staleBefore = Date.now() - (24 * 60 * 60 * 1000); // 24 hour active lease
     response.json({ devices: devices.map((device) => ({
       id: String(device._id),
       deviceName: device.deviceName,

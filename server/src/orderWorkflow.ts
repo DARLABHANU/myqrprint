@@ -4,6 +4,7 @@ export type OrderStatus =
   | "needs_approval"
   | "queued"
   | "printing"
+  | "submitted"
   | "printed"
   | "failed"
   | "rejected"
@@ -15,33 +16,38 @@ export type MerchantOrderAction = "confirm_payment" | "approve_order" | "mark_re
 
 export type OrderState = {
   status: OrderStatus;
-  paymentMethod: "upi" | "cash";
+  paymentMethod: "upi" | "cash" | "pay_here";
   paymentStatus: PaymentStatus;
 };
 
 export function transitionMerchantOrder(
   current: OrderState,
   action: MerchantOrderAction,
+  options: { autoPrint?: boolean } = {},
 ): OrderState {
   switch (action) {
     case "confirm_payment":
       if (current.status !== "awaiting_payment" && current.status !== "awaiting_cash") {
         throw new Error("Payment can only be confirmed for an order awaiting payment.");
       }
-      return { ...current, status: "queued", paymentStatus: "paid" };
+      return {
+        ...current,
+        status: current.paymentMethod === "upi" && !options.autoPrint ? "needs_approval" : "queued",
+        paymentStatus: "paid",
+      };
     case "approve_order":
       if ((current.status !== "needs_approval" && current.status !== "queued") || current.paymentStatus !== "paid") {
         throw new Error("Only a payment-confirmed order can enter fulfillment queue.");
       }
       return { ...current, status: "queued" };
     case "mark_ready":
-      if ((current.status !== "queued" && current.status !== "printing") || current.paymentStatus !== "paid") {
-        throw new Error("Only a paid order in manual fulfillment can be marked ready.");
+      if ((current.status !== "queued" && current.status !== "printing" && current.status !== "submitted") || current.paymentStatus !== "paid") {
+        throw new Error("Only a paid order in the print workflow can be marked ready.");
       }
       return { ...current, status: "printed" };
     case "requeue":
-      if (current.status !== "failed" || current.paymentStatus !== "paid") {
-        throw new Error("Only a paid order with a previous fulfillment issue can be returned to the manual queue.");
+      if (!(["failed", "submitted"].includes(current.status)) || current.paymentStatus !== "paid") {
+        throw new Error("Only a paid failed or submitted order can be retried.");
       }
       return { ...current, status: "queued" };
     case "reject":

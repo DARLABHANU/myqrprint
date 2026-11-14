@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownRight,
-  ArrowUpRight,
   BarChart2,
   Calendar,
   Columns,
@@ -10,7 +8,6 @@ import {
   FileText,
   Grid,
   Image as ImageIcon,
-  IndianRupee,
   LayoutGrid,
   Printer,
   QrCode,
@@ -188,7 +185,7 @@ export function ReportsDashboardPage() {
     {
       method: "razorpay",
       label: "Razorpay",
-      description: "To your wallet",
+      description: "Online gateway (on hold)",
       iconType: "razorpay",
       ...paymentShare(printed, "razorpay", revenue),
     },
@@ -527,7 +524,6 @@ export function ReportsDashboardPage() {
               {methodTotals.map((item) => {
                 const isUpi = item.iconType === "upi";
                 const isRazorpay = item.iconType === "razorpay";
-                const isCash = item.iconType === "cash";
 
                 const iconBg = isUpi ? "#f3e8ff" : isRazorpay ? "#e0f2fe" : "#fef3c7";
                 const iconColor = isUpi ? "#9333ea" : isRazorpay ? "#0284c7" : "#d97706";
