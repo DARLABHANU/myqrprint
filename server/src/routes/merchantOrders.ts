@@ -140,6 +140,10 @@ merchantOrdersRouter.patch("/orders/:orderId", requireDesktopAgent, async (reque
       response.status(404).json({ error: "Order not found." });
       return;
     }
+    if (order.paymentMethod === "razorpay" && parsedBody.data.action === "confirm_payment") {
+      response.status(409).json({ error: "Razorpay payments are confirmed automatically after gateway verification." });
+      return;
+    }
     let nextState;
     try {
       nextState = transitionMerchantOrder(order, parsedBody.data.action, { autoPrint: shop.autoPrint });

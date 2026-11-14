@@ -16,7 +16,7 @@ export type MerchantOrderAction = "confirm_payment" | "approve_order" | "mark_re
 
 export type OrderState = {
   status: OrderStatus;
-  paymentMethod: "upi" | "cash" | "pay_here";
+  paymentMethod: "upi" | "cash" | "pay_here" | "razorpay";
   paymentStatus: PaymentStatus;
 };
 
@@ -32,7 +32,7 @@ export function transitionMerchantOrder(
       }
       return {
         ...current,
-        status: current.paymentMethod === "upi" && !options.autoPrint ? "needs_approval" : "queued",
+        status: ["upi", "razorpay"].includes(current.paymentMethod) && !options.autoPrint ? "needs_approval" : "queued",
         paymentStatus: "paid",
       };
     case "approve_order":

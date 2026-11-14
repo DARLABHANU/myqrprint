@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  CreditCard,
   FileImage,
   FileText,
   LoaderCircle,
@@ -50,6 +51,7 @@ type PublicShop = {
   locationRadiusMeters: number;
   upiId: string;
   cashEnabled: boolean;
+  razorpayEnabled?: boolean;
   enabledPaperSizes: string[];
   colourEnabled: boolean;
   duplexEnabled: boolean;
@@ -80,10 +82,52 @@ type Quote = {
 type OrderConfirmation = {
   code: string;
   status: string;
-  paymentMethod: "upi" | "cash" | "pay_here";
+  paymentMethod: "upi" | "cash" | "pay_here" | "razorpay";
   paymentStatus: string;
   amountPaise: number;
 };
+
+type RazorpayCheckout = {
+  keyId: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+};
+
+type RazorpayCheckoutResult = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayCheckoutInstance = {
+  open(): void;
+  on(event: "payment.failed", callback: (event: { error?: { description?: string } }) => void): void;
+};
+
+type RazorpayCheckoutConstructor = new (options: Record<string, unknown>) => RazorpayCheckoutInstance;
+
+async function loadRazorpayCheckout(): Promise<RazorpayCheckoutConstructor> {
+  const razorpayWindow = window as Window & { Razorpay?: RazorpayCheckoutConstructor };
+  if (razorpayWindow.Razorpay) return razorpayWindow.Razorpay;
+  await new Promise<void>((resolve, reject) => {
+    const current = document.querySelector<HTMLScriptElement>('script[data-razorpay-checkout="true"]');
+    if (current) {
+      current.addEventListener("load", () => resolve(), { once: true });
+      current.addEventListener("error", () => reject(new Error("Razorpay checkout could not load.")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.dataset.razorpayCheckout = "true";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Razorpay checkout could not load."));
+    document.head.appendChild(script);
+  });
+  if (!razorpayWindow.Razorpay) throw new Error("Razorpay checkout is not available in this browser.");
+  return razorpayWindow.Razorpay;
+}
 
 const layouts = [
   { value: "single", label: "1 photo per page", shortLabel: "1", capacity: 1, columns: 1 },
@@ -138,7 +182,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
     orientation: "portrait",
     pageRange: "",
   });
-  const [selectedPayment, setSelectedPayment] = useState<"upi" | "cash" | "pay_here">("cash");
+  const [selectedPayment, setSelectedPayment] = useState<"upi" | "cash" | "pay_here" | "razorpay">("cash");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [order, setOrder] = useState<OrderConfirmation | null>(null);
   const [error, setError] = useState("");
@@ -153,6 +197,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
   const [claiming, setClaiming] = useState(false);
   const [statusError, setStatusError] = useState("");
   const [copiedUpi, setCopiedUpi] = useState(false);
+  const [razorpayCheckout, setRazorpayCheckout] = useState<RazorpayCheckout | null>(null);
 
   // UPI payment prompt modal state
   const [upiModalOpen, setUpiModalOpen] = useState(false);
@@ -241,6 +286,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
         const result = (await response.json()) as { order: OrderConfirmation };
         if (active) {
           setOrder(result.order);
+          if (result.order.paymentStatus === "paid") setRazorpayCheckout(null);
           setStatusError("");
         }
       } catch (reason) {
@@ -273,7 +319,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
         setShop(body.shop);
         setError("");
         if (firstRequest) {
-          setSelectedPayment(body.shop.upiId ? "upi" : "cash");
+          setSelectedPayment(body.shop.razorpayEnabled ? "razorpay" : body.shop.upiId ? "upi" : "cash");
           const firstSize = body.shop.enabledPaperSizes[0] ?? "A4";
           setOptions((current) => ({ ...current, paperSize: firstSize }));
         }
@@ -406,7 +452,59 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
     }
   }
 
-  async function placeOrder(paymentMethod: "upi" | "cash" | "pay_here") {
+  async function startRazorpayCheckout(checkout: RazorpayCheckout, orderCode: string) {
+    const Razorpay = await loadRazorpayCheckout();
+    const instance = new Razorpay({
+      key: checkout.keyId,
+      order_id: checkout.orderId,
+      amount: checkout.amount,
+      currency: checkout.currency,
+      name: "Printly",
+      description: `Print order #${orderCode}`,
+      theme: { color: "#079c73" },
+      handler: async (result: RazorpayCheckoutResult) => {
+        try {
+          const response = await fetch(`/api/public/shops/${encodeURIComponent(slug)}/orders/${encodeURIComponent(orderCode)}/razorpay/verify`, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              razorpayOrderId: result.razorpay_order_id,
+              razorpayPaymentId: result.razorpay_payment_id,
+              razorpaySignature: result.razorpay_signature,
+            }),
+          });
+          if (!response.ok) throw new Error(await getApiError(response));
+          const body = (await response.json()) as { order: OrderConfirmation };
+          setOrder(body.order);
+          setRazorpayCheckout(null);
+          setError("");
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : "Payment was received but could not be confirmed yet.");
+        }
+      },
+      modal: { ondismiss: () => setSubmitting(false) },
+    });
+    instance.on("payment.failed", (event) => {
+      setSubmitting(false);
+      setError(event.error?.description || "Razorpay payment failed. You can retry this payment.");
+    });
+    instance.open();
+  }
+
+  async function retryRazorpayPayment() {
+    if (!order || order.paymentMethod !== "razorpay" || !razorpayCheckout) return;
+    setError("");
+    setSubmitting(true);
+    try {
+      await startRazorpayCheckout(razorpayCheckout, order.code);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Razorpay checkout could not be opened.");
+      setSubmitting(false);
+    }
+  }
+
+  async function placeOrder(paymentMethod: "upi" | "cash" | "pay_here" | "razorpay") {
     if (!shop || !quote) return;
     setError("");
     setSubmitting(true);
@@ -457,8 +555,16 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(await getApiError(response));
-      const body = (await response.json()) as { order: OrderConfirmation };
+      const body = (await response.json()) as { order: OrderConfirmation; razorpay?: RazorpayCheckout };
       setOrder(body.order);
+
+      if (paymentMethod === "razorpay") {
+        if (!body.razorpay) throw new Error("Razorpay checkout details were not returned. The order is saved; retry or contact the shop.");
+        setRazorpayCheckout(body.razorpay);
+        setQuote(null);
+        await startRazorpayCheckout(body.razorpay, body.order.code);
+        return;
+      }
 
       // If UPI was chosen, open the personal UPI prompt modal!
       if (paymentMethod === "upi") {
@@ -575,9 +681,11 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
     photos.slice(index * photoLayout.capacity, (index + 1) * photoLayout.capacity),
   );
 
-  const effectivePayment: "upi" | "cash" | "pay_here" =
+  const effectivePayment: "upi" | "cash" | "pay_here" | "razorpay" =
     selectedPayment === "pay_here" && localTestPaymentsEnabled
       ? "pay_here"
+      : selectedPayment === "razorpay" && shop.razorpayEnabled
+        ? "razorpay"
       : shop.upiId && selectedPayment === "upi"
         ? "upi"
         : shop.cashEnabled
@@ -732,6 +840,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                   ? order.status === "needs_approval" ? "✓ Payment confirmed · Waiting for shop approval" : order.status === "submitted" ? "✓ Sent to printer · Awaiting shop confirmation" : order.status === "failed" ? "✓ Payment confirmed · Print retry needed" : "✓ Payment Confirmed · Print queued"
                   : order.paymentMethod === "upi"
                     ? "Waiting for UPI Verification"
+                    : order.paymentMethod === "razorpay"
+                      ? "Waiting for Razorpay payment"
                     : "Cash Due at Counter"}
               </span>
             </div>
@@ -783,6 +893,19 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
               <span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>Order Total</span>
               <b style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{money(order.amountPaise)}</b>
             </div>
+
+            {order.paymentMethod === "razorpay" && order.paymentStatus !== "paid" && (
+              <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 16, textAlign: "left" }}>
+                <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, margin: "0 0 12px" }}>
+                  Finish the test payment in Razorpay Checkout. Your order will enter the print queue only after Razorpay confirms the payment.
+                </p>
+                {razorpayCheckout && (
+                  <button type="button" disabled={submitting} onClick={() => void retryRazorpayPayment()} style={{ width: "100%", padding: "11px 16px", border: 0, borderRadius: 9, background: "#079c73", color: "#fff", fontSize: 13, fontWeight: 750, cursor: submitting ? "wait" : "pointer" }}>
+                    {submitting ? "Opening secure checkout…" : `Continue payment · ${money(order.amountPaise)}`}
+                  </button>
+                )}
+              </div>
+            )}
 
             {order.paymentMethod === "upi" && order.paymentStatus !== "paid" && (
               <div style={{ textAlign: "left", borderTop: "1px solid #f1f5f9", paddingTop: 18 }}>
@@ -1821,6 +1944,40 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
               </div>
 
               </>}
+              {shop.razorpayEnabled && (
+                <div
+                  role="radio"
+                  aria-checked={selectedPayment === "razorpay"}
+                  tabIndex={0}
+                  onClick={() => setSelectedPayment("razorpay")}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedPayment("razorpay"); }}
+                  style={{
+                    border: selectedPayment === "razorpay" ? "1.5px solid #079c73" : "1px solid #e2e8f0",
+                    background: selectedPayment === "razorpay" ? "#f0fdf4" : "#ffffff",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "#e0f2fe", color: "#0369a1", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                      <CreditCard size={19} />
+                    </div>
+                    <div>
+                      <b style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Razorpay</b>
+                      <small style={{ color: "#64748b", fontSize: 11 }}>UPI · Cards · Netbanking · Wallet · Test mode</small>
+                    </div>
+                  </div>
+                  {selectedPayment === "razorpay"
+                    ? <CheckCircle2 size={20} color="#079c73" fill="#079c73" stroke="white" />
+                    : <span style={{ width: 18, height: 18, border: "1.5px solid #cbd5e1", borderRadius: "50%" }} />}
+                </div>
+              )}
+
               {/* UPI */}
               {shop.upiId && (
                 <div
@@ -2110,6 +2267,8 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                     ? `Pay & Print ${quote ? money(quote.amountPaise) : ""}`
                     : effectivePayment === "upi"
                       ? "Pay with UPI"
+                      : effectivePayment === "razorpay"
+                        ? `Pay ${quote ? money(quote.amountPaise) : ""} with Razorpay`
                       : "Place order"}
               </span>
               <span style={{ fontSize: 15 }}>→</span>

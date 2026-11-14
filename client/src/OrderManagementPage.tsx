@@ -28,7 +28,7 @@ type MerchantOrder = {
   id: string;
   code: string;
   status: OrderStatus;
-  paymentMethod: "upi" | "cash" | "pay_here";
+  paymentMethod: "upi" | "cash" | "pay_here" | "razorpay";
   paymentStatus: "unverified" | "awaiting_cash" | "paid";
   paymentClaimedAt?: string;
   paymentReference?: string;
@@ -353,7 +353,7 @@ export function OrderManagementPage() {
                   <div className="merchant-order-summary">
                     <b>{money(order.amountPaise)}</b>
                     {(order.customerName || order.customerMobile) && <span>Customer: {[order.customerName, order.customerMobile].filter(Boolean).join(" · ")}</span>}
-                    <span>{order.paymentMethod === "upi" ? "Direct UPI" : "Cash at counter"} · {order.paymentStatus === "paid" ? "Payment confirmed" : "Not confirmed"}</span>
+                    <span>{order.paymentMethod === "razorpay" ? "Razorpay Checkout" : order.paymentMethod === "upi" ? "Direct UPI" : order.paymentMethod === "pay_here" ? "Local test payment" : "Cash at counter"} · {order.paymentStatus === "paid" ? "Payment confirmed" : "Not confirmed"}</span>
                     <span>{order.options.paperSize} · {order.options.colour ? "Colour" : "B&W"} · {order.options.duplex ? "Double-sided" : "Single-sided"} · {order.options.copies} {order.options.copies === 1 ? "copy" : "copies"}</span>
                     {order.options.photoLayout && <span>Photo layout: {order.options.photoLayout.replaceAll("_", " ")}</span>}
                   </div>

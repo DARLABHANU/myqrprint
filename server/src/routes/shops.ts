@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Shop } from "../models/Shop.js";
 import { AgentDevice } from "../models/AgentDevice.js";
 import { requireDesktopAgent } from "../agentAccess.js";
+import { isRazorpayEnabled } from "../services/razorpay.js";
 import { User } from "../models/User.js";
 import { calculateQuote } from "../pricing.js";
 
@@ -169,7 +170,7 @@ shopsRouter.get("/me", async (request, response, next) => {
     }
     const onlineSince = new Date(Date.now() - agentOnlineWindowMs);
     const agentOnline = Boolean(await AgentDevice.exists({ shopId: shop._id, status: "online", lastSeenAt: { $gte: onlineSince } }));
-    response.json({ shop, agentOnline });
+    response.json({ shop, agentOnline, razorpayEnabled: isRazorpayEnabled() });
   } catch (error) {
     next(error);
   }

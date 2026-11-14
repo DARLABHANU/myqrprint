@@ -14,7 +14,7 @@ export const printOrderStatuses = [
   "cancelled",
   "expired",
 ] as const;
-export const paymentMethods = ["upi", "cash"] as const;
+export const paymentMethods = ["upi", "cash", "razorpay"] as const;
 export const paymentStatuses = ["unverified", "awaiting_cash", "paid"] as const;
 
 export const paperSizeSchema = z.enum(paperSizes);

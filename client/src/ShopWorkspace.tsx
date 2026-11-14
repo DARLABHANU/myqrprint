@@ -52,6 +52,7 @@ type ShopSettings = {
   upiId: string;
   upiEnabled: boolean;
   cashEnabled: boolean;
+  razorpayEnabled?: boolean;
   autoPrint: boolean;
   isOnline: boolean;
   agentOnline?: boolean;
@@ -336,9 +337,9 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
       try {
         const { user: account } = await requestJson<{ user: User }>("/api/auth/me");
         setUser(account);
-        const { shop: savedShop, agentOnline } = await requestJson<{ shop: ShopSettings; agentOnline?: boolean }>("/api/shops/me");
+        const { shop: savedShop, agentOnline, razorpayEnabled } = await requestJson<{ shop: ShopSettings; agentOnline?: boolean; razorpayEnabled?: boolean }>("/api/shops/me");
         const rates = { ...createEmptyShop().rates, ...savedShop.rates };
-        setShop({ ...createEmptyShop(), ...savedShop, agentOnline: Boolean(agentOnline), autoPrint: savedShop.autoPrint ?? false, upiEnabled: savedShop.upiEnabled ?? Boolean(savedShop.upiId), discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
+        setShop({ ...createEmptyShop(), ...savedShop, razorpayEnabled: Boolean(razorpayEnabled), agentOnline: Boolean(agentOnline), autoPrint: savedShop.autoPrint ?? false, upiEnabled: savedShop.upiEnabled ?? Boolean(savedShop.upiId), discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
       } catch (reason) {
         if (reason instanceof Error && reason.message.includes("Sign in")) {
           window.location.assign("/login");
@@ -739,8 +740,8 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
                   ) : null}
                 </article>
                 <article className={`shop-payment-method${shop.cashEnabled ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol cash">⌂</span><div><b>Cash at counter</b><small>Customer pays when they collect the print</small></div><label className="toggle-switch-control"><input type="checkbox" checked={shop.cashEnabled} onChange={(event) => updateShop("cashEnabled", event.target.checked)} /><i/></label></div>{shop.cashEnabled && <p className="shop-payment-help">Orders stay marked as unpaid until you collect cash and confirm the payment.</p>}</article>
-                <article className="shop-payment-method shop-payment-gateway-hold"><div className="shop-payment-method-heading"><span className="shop-payment-symbol gateway"><CreditCard size={15}/></span><div><b>Razorpay</b><small>Card · Netbanking · Wallet</small></div><span className="shop-payment-state">On hold</span></div><p className="shop-payment-help">Online gateway checkout is not enabled. Customers can pay by your UPI ID or cash at pickup.</p></article>
-                <div className="payment-note"><ShieldCheck size={16} /> UPI and cash payments go directly to your shop. Printly does not process customer payments or take a commission.</div>
+                <article className={`shop-payment-method shop-payment-gateway-hold${shop.razorpayEnabled ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol gateway"><CreditCard size={15}/></span><div><b>Razorpay</b><small>UPI · Cards · Netbanking · Wallet</small></div><span className="shop-payment-state">{shop.razorpayEnabled ? "Test mode ready" : "Needs test keys"}</span></div><p className="shop-payment-help">{shop.razorpayEnabled ? "Test checkout is available to customers. Test payments do not transfer real money." : "Add Razorpay test key ID and key secret to the backend environment to enable customer checkout."}</p></article>
+                <div className="payment-note"><ShieldCheck size={16} /> Razorpay payments are collected by the configured Printly gateway account. Shop payouts are not configured in this test integration.</div>
               </div>
             </section>
 

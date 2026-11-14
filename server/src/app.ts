@@ -13,6 +13,7 @@ import { shopsRouter } from "./routes/shops.js";
 import { printersRouter } from "./routes/printers.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { adminSubscriptionsRouter } from "./routes/adminSubscriptions.js";
+import { razorpayWebhookRouter } from "./routes/razorpayWebhook.js";
 
 export const app = express();
 app.set("trust proxy", 1);
@@ -47,6 +48,7 @@ app.use(cors({
   },
   credentials: true,
 }));
+app.use("/api/payments/razorpay/webhook", express.raw({ type: "application/json", limit: "1mb" }), razorpayWebhookRouter);
 app.use(express.json({ limit: "1mb" }));
 
 // Comprehensive Backend Activity & Request Logger
@@ -66,7 +68,7 @@ app.use((request, response, next) => {
     const reset = "\x1b[0m";
 
     let sanitizedBody = "";
-    if (request.body && typeof request.body === "object" && Object.keys(request.body).length > 0) {
+    if (request.body && typeof request.body === "object" && !Buffer.isBuffer(request.body) && Object.keys(request.body).length > 0) {
       const copy = { ...request.body };
       if ("password" in copy) copy.password = "******";
       if ("currentPassword" in copy) copy.currentPassword = "******";

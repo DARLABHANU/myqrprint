@@ -18,6 +18,7 @@ import { CustomerUpload } from "../models/CustomerUpload.js";
 import { AgentDevice } from "../models/AgentDevice.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { Shop } from "../models/Shop.js";
+import { captureRazorpayPayment, createRazorpayOrder, fetchRazorpayPayment, isRazorpayEnabled, markRazorpayPaymentCaptured, razorpayPublicKeyId, verifyCheckoutSignature } from "../services/razorpay.js";
 import {
   deleteFromCloudinary,
   isCloudinaryEnabled,
@@ -94,7 +95,7 @@ const quoteSchema = z.object({
   options: optionsSchema,
 }).strict();
 const orderSchema = quoteSchema.extend({
-  paymentMethod: z.enum(["upi", "cash", "pay_here"]),
+  paymentMethod: z.enum(["upi", "cash", "pay_here", "razorpay"]),
   customerName: z.string().trim().max(100).optional(),
   customerMobile: z.string().trim().max(20).optional(),
   customerLatitude: z.number().min(-90).max(90).optional(),
@@ -103,6 +104,40 @@ const orderSchema = quoteSchema.extend({
 const paymentClaimSchema = z.object({
   reference: z.string().trim().max(80).optional(),
 }).strict();
+const razorpayVerificationSchema = z.object({
+  razorpayOrderId: z.string().min(1).max(64),
+  razorpayPaymentId: z.string().min(1).max(64),
+  razorpaySignature: z.string().regex(/^[a-f\d]{64}$/i),
+}).strict();
+
+function customerOrderResponse(order: InstanceType<typeof PrintOrder>) {
+  return {
+    order: {
+      code: order.publicCode,
+      status: order.status,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      amountPaise: order.amountPaise,
+    },
+    ...(order.paymentMethod === "razorpay" && order.paymentStatus !== "paid" && order.status === "awaiting_payment" && order.razorpayOrderId && isRazorpayEnabled()
+      ? { razorpay: { keyId: razorpayPublicKeyId(), orderId: order.razorpayOrderId, amount: order.amountPaise, currency: order.currency } }
+      : {}),
+  };
+}
+
+async function ensureRazorpayOrder(order: InstanceType<typeof PrintOrder>, shop: InstanceType<typeof Shop>) {
+  if (order.razorpayOrderId) return;
+  const gatewayOrder = await createRazorpayOrder({
+    amountPaise: order.amountPaise,
+    receipt: order.publicCode,
+    notes: { printlyOrderCode: order.publicCode, shopSlug: shop.slug },
+  });
+  if (gatewayOrder.amount !== order.amountPaise || gatewayOrder.currency !== "INR") {
+    throw new Error("Razorpay returned an order with an unexpected amount or currency.");
+  }
+  order.razorpayOrderId = gatewayOrder.id;
+  await order.save();
+}
 
 type DetectedFile = {
   mediaType: "application/pdf" | "image/jpeg" | "image/png" | "image/webp";
@@ -143,6 +178,7 @@ function publicShop(shop: InstanceType<typeof Shop> | null) {
     address: [record.address, record.city, record.state, record.pincode].filter(Boolean).join(", "),
     upiId: (record.upiEnabled ?? Boolean(record.upiId)) ? record.upiId : "",
     cashEnabled: record.cashEnabled,
+    razorpayEnabled: isRazorpayEnabled(),
     enabledPaperSizes: record.enabledPaperSizes,
     colourEnabled: record.colourEnabled,
     duplexEnabled: record.duplexEnabled,
@@ -513,6 +549,10 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
     response.status(403).json({ error: "Test payments are only available in local development." });
     return;
   }
+  if (parsed.data.paymentMethod === "razorpay" && !isRazorpayEnabled()) {
+    response.status(503).json({ error: "Razorpay test checkout is not configured yet." });
+    return;
+  }
 
   let createdOrderId: mongoose.Types.ObjectId | undefined;
   let orderShopId: mongoose.Types.ObjectId | undefined;
@@ -554,15 +594,8 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       idempotencyKey: idempotencyKey.data,
     });
     if (existing) {
-      response.status(200).json({
-        order: {
-          code: existing.publicCode,
-          status: existing.status,
-          paymentMethod: existing.paymentMethod,
-          paymentStatus: existing.paymentStatus,
-          amountPaise: existing.amountPaise,
-        },
-      });
+      if (existing.paymentMethod === "razorpay") await ensureRazorpayOrder(existing, shop);
+      response.status(200).json(customerOrderResponse(existing));
       return;
     }
     if (parsed.data.paymentMethod === "upi" && (!(shop.upiEnabled ?? Boolean(shop.upiId)) || !shop.upiId)) {
@@ -571,6 +604,10 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
     }
     if (parsed.data.paymentMethod === "cash" && !shop.cashEnabled) {
       response.status(400).json({ error: "Cash at counter is not enabled for this shop." });
+      return;
+    }
+    if (parsed.data.paymentMethod === "razorpay" && !isRazorpayEnabled()) {
+      response.status(503).json({ error: "Razorpay test checkout is not configured yet." });
       return;
     }
 
@@ -591,8 +628,9 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + shop.fileRetentionHours * 60 * 60 * 1000);
     const isPayHere = parsed.data.paymentMethod === "pay_here";
-    const status = isPayHere ? "queued" : parsed.data.paymentMethod === "upi" ? "awaiting_payment" : "awaiting_cash";
-    const paymentStatus = isPayHere ? "paid" : parsed.data.paymentMethod === "upi" ? "unverified" : "awaiting_cash";
+    const isRazorpay = parsed.data.paymentMethod === "razorpay";
+    const status = isPayHere ? "queued" : ["upi", "razorpay"].includes(parsed.data.paymentMethod) ? "awaiting_payment" : "awaiting_cash";
+    const paymentStatus = isPayHere ? "paid" : ["upi", "razorpay"].includes(parsed.data.paymentMethod) ? "unverified" : "awaiting_cash";
     let order: InstanceType<typeof PrintOrder> | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -619,6 +657,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
           events: [
             { type: "order_created", actorType: "customer", timestamp: now },
             ...(isPayHere ? [{ type: "instant_payment_received", actorType: "customer" as const, timestamp: now, note: "Paid instantly via Pay Here. Queued for auto-printing." }] : []),
+          ...(isRazorpay ? [{ type: "razorpay_checkout_created", actorType: "system" as const, timestamp: now, note: "Awaiting verified Razorpay test payment." }] : []),
           ],
           expiresAt,
         });
@@ -629,6 +668,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
     }
     if (!order) throw new Error("Could not create the order.");
     createdOrderId = order._id;
+    if (isRazorpay) await ensureRazorpayOrder(order, shop);
 
     const claimed = await CustomerUpload.updateMany(
       { _id: { $in: uploads.map((upload) => upload._id) }, sessionId: request.sessionID, state: "temporary" },
@@ -644,15 +684,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
 
     await Shop.updateOne({ _id: shop._id }, { $inc: { subscriptionOrdersUsed: 1 } });
 
-    response.status(201).json({
-      order: {
-        code: order.publicCode,
-        status: order.status,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        amountPaise: order.amountPaise,
-      },
-    });
+    response.status(201).json(customerOrderResponse(order));
   } catch (error) {
     if (createdOrderId) {
       const rollbackResults = await Promise.allSettled([
@@ -677,15 +709,11 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
           idempotencyKey: idempotencyKey.data,
         }) : null;
         if (existing) {
-          response.status(200).json({
-            order: {
-              code: existing.publicCode,
-              status: existing.status,
-              paymentMethod: existing.paymentMethod,
-              paymentStatus: existing.paymentStatus,
-              amountPaise: existing.amountPaise,
-            },
-          });
+          if (existing.paymentMethod === "razorpay") {
+            const existingShop = orderShopId ? await Shop.findById(orderShopId) : null;
+            if (existingShop) await ensureRazorpayOrder(existing, existingShop);
+          }
+          response.status(200).json(customerOrderResponse(existing));
           return;
         }
       } catch (lookupError) {
@@ -732,6 +760,99 @@ publicShopsRouter.get("/:slug/orders/:code", orderLimiter, async (request, respo
         updatedAt: order.updatedAt,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+publicShopsRouter.post("/:slug/orders/:code/razorpay/checkout", orderLimiter, async (request, response, next) => {
+  const slug = slugOrRespond(request, response);
+  if (!slug) return;
+  const code = z.string().regex(/^[A-F0-9]{8}$/).safeParse(request.params.code);
+  if (!code.success || !isRazorpayEnabled()) {
+    response.status(code.success ? 503 : 400).json({ error: "Razorpay checkout is unavailable." });
+    return;
+  }
+  try {
+    const shop = await Shop.findOne({ slug });
+    const order = shop ? await PrintOrder.findOne({
+      shopId: shop._id,
+      publicCode: code.data,
+      customerSessionId: request.sessionID,
+      paymentMethod: "razorpay",
+    }) : null;
+    if (!shop || !order) {
+      response.status(404).json({ error: "Order not found." });
+      return;
+    }
+    if (order.paymentStatus === "paid") {
+      response.status(409).json({ error: "This order has already been paid." });
+      return;
+    }
+    if (order.status !== "awaiting_payment") {
+      response.status(409).json({ error: "This order is no longer awaiting payment." });
+      return;
+    }
+    await ensureRazorpayOrder(order, shop);
+    response.json(customerOrderResponse(order));
+  } catch (error) {
+    next(error);
+  }
+});
+
+publicShopsRouter.post("/:slug/orders/:code/razorpay/verify", orderLimiter, async (request, response, next) => {
+  const slug = slugOrRespond(request, response);
+  if (!slug) return;
+  const code = z.string().regex(/^[A-F0-9]{8}$/).safeParse(request.params.code);
+  const parsed = razorpayVerificationSchema.safeParse(request.body);
+  if (!code.success || !parsed.success) {
+    response.status(400).json({ error: "Razorpay returned invalid payment details." });
+    return;
+  }
+  try {
+    const shop = await Shop.findOne({ slug });
+    const order = shop ? await PrintOrder.findOne({
+      shopId: shop._id,
+      publicCode: code.data,
+      customerSessionId: request.sessionID,
+      paymentMethod: "razorpay",
+    }) : null;
+    if (!shop || !order || !order.razorpayOrderId) {
+      response.status(404).json({ error: "Razorpay order not found." });
+      return;
+    }
+    if (parsed.data.razorpayOrderId !== order.razorpayOrderId) {
+      response.status(400).json({ error: "The payment does not match this print order." });
+      return;
+    }
+    if (!verifyCheckoutSignature(parsed.data.razorpayOrderId, parsed.data.razorpayPaymentId, parsed.data.razorpaySignature)) {
+      response.status(400).json({ error: "Razorpay payment signature could not be verified." });
+      return;
+    }
+
+    let payment = await fetchRazorpayPayment(parsed.data.razorpayPaymentId);
+    if (payment.order_id !== order.razorpayOrderId || payment.amount !== order.amountPaise || payment.currency !== order.currency) {
+      response.status(400).json({ error: "Razorpay payment amount or order does not match." });
+      return;
+    }
+    if (payment.status === "authorized") {
+      payment = await captureRazorpayPayment(payment.id, order.amountPaise);
+    }
+    if (payment.status !== "captured") {
+      response.status(409).json({ error: "Payment is not captured yet. Keep this page open while we confirm it." });
+      return;
+    }
+    const result = await markRazorpayPaymentCaptured({
+      orderId: payment.order_id,
+      paymentId: payment.id,
+      amount: payment.amount,
+      currency: payment.currency,
+    });
+    if (!result.found || !result.matched || !result.order) {
+      response.status(409).json({ error: "Payment confirmation needs review. Contact the shop before paying again." });
+      return;
+    }
+    response.json({ order: customerOrderResponse(result.order).order });
   } catch (error) {
     next(error);
   }
