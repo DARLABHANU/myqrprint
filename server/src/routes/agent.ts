@@ -1,14 +1,13 @@
-import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { agentHeartbeatSchema, pairAgentRequestSchema, printJobResultSchema } from "@printly/contracts";
+import { agentHeartbeatSchema, printJobResultSchema } from "@printly/contracts";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { isValidObjectId } from "mongoose";
 import { z } from "zod";
 import { AgentDevice } from "../models/AgentDevice.js";
-import { AgentPairingCode } from "../models/AgentPairingCode.js";
 import { CustomerUpload } from "../models/CustomerUpload.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { PrinterRoute } from "../models/PrinterRoute.js";
@@ -21,18 +20,17 @@ export const agentRouter = Router();
 const authenticatedAgentRouter = Router();
 const shopOwnerRouter = Router();
 const uploadDirectory = join(process.cwd(), "data", "uploads");
-const pairingWindowMs = 10 * 60 * 1000;
 const accessTokenLifetimeMs = 90 * 24 * 60 * 60 * 1000;
 const printLeaseMs = 10 * 60 * 1000;
 const onlineWindowMs = 5 * 60 * 1000;
 
-const pairingLimiter = rateLimit({
+const connectionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 15,
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
-  message: { error: "Too many pairing attempts. Wait before trying again." },
+  message: { error: "Too many desktop connection attempts. Wait before trying again." },
 });
 
 const revokeSchema = z.object({ deviceId: z.string().refine(isValidObjectId) }).strict();
@@ -57,7 +55,7 @@ async function requireAgent(request: Request, response: Response, next: NextFunc
   const authorization = request.get("authorization") ?? "";
   const match = /^Bearer ([A-Za-z0-9_-]{40,160})$/.exec(authorization);
   if (!match) {
-    response.status(401).json({ error: "This computer is not connected. Pair it with your shop first." });
+    response.status(401).json({ error: "This computer is not connected. Sign in to your shop in the desktop app." });
     return;
   }
   try {
@@ -67,7 +65,7 @@ async function requireAgent(request: Request, response: Response, next: NextFunc
       tokenExpiresAt: { $gt: new Date() },
     });
     if (!agent) {
-      response.status(401).json({ error: "The computer connection expired or was revoked. Pair it again from Printers." });
+      response.status(401).json({ error: "The computer connection expired or was revoked. Sign in again in the desktop app." });
       return;
     }
     response.locals.agent = agent;
@@ -75,27 +73,17 @@ async function requireAgent(request: Request, response: Response, next: NextFunc
   } catch (error) { next(error); }
 }
 
-agentRouter.post("/pair", pairingLimiter, async (request, response, next) => {
-  const parsed = pairAgentRequestSchema.safeParse(request.body);
-  if (!parsed.success) { response.status(400).json({ error: "Enter the six-digit code shown in your shop dashboard." }); return; }
+shopOwnerRouter.post("/connect", requireShopOwner, connectionLimiter, async (request, response, next) => {
+  const parsed = z.object({ deviceName: z.string().trim().min(1).max(120), agentVersion: z.string().trim().min(1).max(40) }).strict().safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ error: "The desktop app sent invalid connection details." }); return; }
   try {
     const now = new Date();
-    const pairing = await AgentPairingCode.findOneAndUpdate(
-      { codeHash: hashSecret(parsed.data.pairingCode), usedAt: { $exists: false }, expiresAt: { $gt: now } },
-      { $set: { usedAt: now } },
-      { new: true },
-    );
-    if (!pairing) { response.status(400).json({ error: "That pairing code is invalid or has expired. Generate a new code from Printers." }); return; }
-    const shop = await Shop.findById(pairing.shopId).select("displayName");
-    if (!shop) { response.status(404).json({ error: "The shop for this pairing code no longer exists." }); return; }
-
-    // Pairing a computer never publishes the customer page by itself. The shop owner must
-    // explicitly turn the shop online from the connected desktop agent.
-    await Shop.updateOne({ _id: shop._id }, { $set: { isOnline: false } });
+    const shop = await Shop.findOne({ ownerId: request.session.userId }).select("_id displayName");
+    if (!shop) { response.status(404).json({ error: "No shop is linked to this account." }); return; }
 
     const accessToken = randomBytes(48).toString("base64url");
     const tokenExpiresAt = new Date(now.getTime() + accessTokenLifetimeMs);
-    let agent = await AgentDevice.findOne({ shopId: pairing.shopId, deviceName: parsed.data.deviceName });
+    let agent = await AgentDevice.findOne({ shopId: shop._id, deviceName: parsed.data.deviceName });
     if (agent) {
       agent.agentVersion = parsed.data.agentVersion;
       agent.tokenHash = hashSecret(accessToken);
@@ -106,7 +94,7 @@ agentRouter.post("/pair", pairingLimiter, async (request, response, next) => {
       await agent.save();
     } else {
       agent = await AgentDevice.create({
-        shopId: pairing.shopId,
+        shopId: shop._id,
         deviceName: parsed.data.deviceName,
         agentVersion: parsed.data.agentVersion,
         tokenHash: hashSecret(accessToken),
@@ -116,9 +104,12 @@ agentRouter.post("/pair", pairingLimiter, async (request, response, next) => {
       });
     }
 
-    // Ensure all existing Windows printers for this shop link to this agent device
+    // A fresh desktop sign-in always starts offline; the shopkeeper explicitly enables it in the agent.
+    await Shop.updateOne({ _id: shop._id }, { $set: { isOnline: false } });
+
+    // Link existing Windows printers for this shop to this signed-in desktop.
     await ShopPrinter.updateMany(
-      { shopId: pairing.shopId, protocol: "windows" },
+      { shopId: shop._id, protocol: "windows" },
       { $set: { agentDeviceId: agent._id, status: "ready" } }
     );
     response.status(201).json({
@@ -145,6 +136,21 @@ authenticatedAgentRouter.patch("/shop-online", async (request, response, next) =
     agent.lastSeenAt = now;
     await agent.save();
     response.json({ isOnline: shop.isOnline, agentOnline: true });
+  } catch (error) { next(error); }
+});
+
+authenticatedAgentRouter.post("/disconnect", async (_request, response, next) => {
+  const agent = response.locals.agent as InstanceType<typeof AgentDevice>;
+  try {
+    const now = new Date();
+    agent.status = "revoked";
+    agent.revokedAt = now;
+    await agent.save();
+    await Promise.all([
+      Shop.updateOne({ _id: agent.shopId }, { $set: { isOnline: false } }),
+      ShopPrinter.updateMany({ shopId: agent.shopId, agentDeviceId: agent._id }, { $set: { status: "offline" } }),
+    ]);
+    response.status(204).end();
   } catch (error) { next(error); }
 });
 
@@ -342,17 +348,6 @@ authenticatedAgentRouter.post("/jobs/:orderId/result", async (request, response,
       { $set: { expiresAt: new Date(now.getTime() + Number(shop.fileRetentionHours) * 60 * 60 * 1000) } },
     );
     response.json({ orderId: String(order._id), status: order.status, note: detail });
-  } catch (error) { next(error); }
-});
-
-shopOwnerRouter.post("/pairing-code", requireShopOwner, async (request, response, next) => {
-  try {
-    const shop = await Shop.findOne({ ownerId: request.session.userId }).select("_id");
-    if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
-    const code = String(randomInt(100000, 1000000));
-    const expiresAt = new Date(Date.now() + pairingWindowMs);
-    await AgentPairingCode.create({ shopId: shop._id, codeHash: hashSecret(code), expiresAt });
-    response.status(201).json({ pairingCode: code, expiresAt: expiresAt.toISOString() });
   } catch (error) { next(error); }
 });
 

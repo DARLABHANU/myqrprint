@@ -43,20 +43,6 @@ export const discoveredPrinterSchema = z.object({
   capabilities: printerCapabilitiesSchema,
 }).strict();
 
-export const pairAgentRequestSchema = z.object({
-  pairingCode: z.string().trim().regex(/^\d{6}$/),
-  deviceName: z.string().trim().min(1).max(120),
-  agentVersion: z.string().trim().min(1).max(40),
-}).strict();
-
-export const pairAgentResponseSchema = z.object({
-  deviceId: z.string().min(1),
-  deviceName: z.string(),
-  accessToken: z.string().min(32),
-  tokenExpiresAt: z.string().datetime(),
-  shop: z.object({ id: z.string(), displayName: z.string() }).strict(),
-}).strict();
-
 export const agentHeartbeatSchema = z.object({
   agentVersion: z.string().trim().min(1).max(40),
   printers: z.array(discoveredPrinterSchema).max(100),

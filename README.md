@@ -5,8 +5,8 @@ A multi-shop print-order web app built with React, Vite, Express, TypeScript, an
 ## Product scope
 
 The current scope includes public shop pages, customer file uploads and quotes,
-direct-to-shop UPI or cash orders, merchant order management, and shop settings.
-Automated printing and printer setup are temporarily paused. Shop subscriptions
+direct-to-shop UPI or cash orders, merchant order management, shop settings,
+and Windows desktop printing connected to the deployed backend. Shop subscriptions
 include a 7-day trial and tiers (Starter, Pro, Enterprise) activated via direct
 platform UPI and admin UTR verification. Customer payments remain direct to each shop and
 must be verified by the shopkeeper. The detailed requirements draft is
@@ -15,7 +15,7 @@ must be verified by the shopkeeper. The detailed requirements draft is
 ## Requirements
 
 - Node.js 22.18 or newer
-- MongoDB Community Server running locally (Compass is a database GUI, not the server)
+- Access to the deployed Render API at `https://printly-api.onrender.com`
 
 ## Run locally
 
@@ -25,38 +25,21 @@ must be verified by the shopkeeper. The detailed requirements draft is
    npm install
    ```
 
-2. Copy `server/.env.example` to `server/.env`. Replace `SESSION_SECRET` with a
-   random secret of at least 32 characters before starting the API.
-   To enable account verification, password resets, and email two-step sign-in,
-   configure Gmail API OAuth (`GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`,
-   `GMAIL_REFRESH_TOKEN`, and `EMAIL_FROM`) in `server/.env`. The Gmail API sends
-   over HTTPS and works on Render Free; SMTP remains an optional fallback on
-   hosts that allow outbound SMTP. Shop subscription billing is not available.
-3. Start MongoDB locally, then run:
+2. Run the local frontend and Windows agent:
 
    ```sh
    npm run dev
    ```
 
-- Frontend: <http://localhost:5173>
-- API health: <http://localhost:4000/api/health>
+- Local frontend: <http://localhost:5173>
+- Deployed API health: <https://printly-api.onrender.com/api/health>
 
-The API health endpoint returns an error status if MongoDB is unavailable.
+The local frontend proxies `/api` requests to Render. The backend and database
+are not started on localhost.
 
-### Test a shop QR code on a phone
-
-For a phone on the same Wi-Fi network as the development computer:
-
-1. Find the computer's Wi-Fi IPv4 address (for example, `192.168.1.8`).
-2. Set `CLIENT_ORIGIN` in `server/.env` to include
-   `http://<computer-ip>:5173`, keeping the existing localhost origins.
-3. Start or restart `npm run dev`, then open
-   `http://<computer-ip>:5173` on the computer and sign in to the shop.
-4. Display the shop QR code and scan it with the phone camera.
-
-The phone and computer must be on the same Wi-Fi. Allow the development server
-through Windows Firewall on private networks if prompted. This is for local
-testing only; do not expose the development server to the public internet.
+For customer-side testing, scan the QR code from the deployed shop page. The
+local desktop agent discovers and prints through the Windows computer, while
+its API connection goes directly to Render.
 
 The current workflows include owner registration/sign-in, one shop per owner
 account, persisted shop settings, and a public customer order page at
@@ -72,10 +55,14 @@ period. Customers can check order status with their session and pickup code.
 Shopkeepers can configure their profile, QR poster, pricing, discounts,
 customer fields, location lock, notifications, and payment methods.
 
-The printer dashboard and desktop print agent are active: shopkeepers can generate
-a 6-digit pairing code to connect their Windows PC running the Printly agent, which
-automatically discovers local printers (including virtual printers like "Microsoft Print to PDF")
-and executes approved print jobs. Shop subscriptions are active: each shop starts
+The printer dashboard and desktop print agent are active: shopkeepers sign in to
+the Windows app with the same shop credentials used on the website. The app
+authenticates the signed-in session, connects that computer to its shop, and
+automatically discovers local printers (including virtual printers like
+"Microsoft Print to PDF"). The shop accepts customer orders only while the agent
+is connected and the shopkeeper has turned the shop online in the desktop app.
+The website dashboard is read-only for printer, job, and shop availability
+controls. Shop subscriptions are active: each shop starts
 with a 7-day free trial (50 orders), and can upgrade to Starter (300 orders),
 Professional (1,500 orders), or Enterprise (unlimited) via direct platform UPI
 payment and UTR verification in `/admin/subscriptions`. Customer orders enforce

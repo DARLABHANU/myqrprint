@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { pairAgentResponseSchema, leasedPrintJobSchema, type DiscoveredPrinter } from '@printly/contracts';
+import { leasedPrintJobSchema, type DiscoveredPrinter } from '@printly/contracts';
 
 const execFileAsync = promisify(execFile);
 
@@ -15,19 +15,21 @@ const credentialsPath = () => join(app.getPath('userData'), 'connection.bin');
 type Connection = { apiUrl: string; token: string; deviceName: string; shopName: string; deviceId: string };
 let mainWindow: BrowserWindow | null = null;
 let connection: Connection | null = null;
+let sessionAuthenticated = false;
 let pollTimer: NodeJS.Timeout | undefined;
 let busy = false;
 let tray: Tray | null = null;
 let isQuitting = false;
 const pendingPrints = new Map<string, { window: BrowserWindow; printerName: string; options: ReturnType<typeof leasedPrintJobSchema.parse>['options']; resolve: () => void; reject: (error: Error) => void }>();
 const productionWebUrl = 'https://myqrprint.vercel.app';
+const renderApiUrl = 'https://printly-api.onrender.com';
 const pauseJobPolling = process.env.PRINTLY_PAUSE_JOB_POLLING === '1';
 function isAllowedOrigin(origin: string): boolean {
   if (!origin || origin === 'null' || origin.startsWith('file:') || origin.startsWith('vscode-webview:')) return true;
   if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin)) return true;
   try {
     const host = new URL(origin).hostname;
-    return host === 'myqrprint.vercel.app' || host.endsWith('.vercel.app');
+    return host === 'myqrprint.vercel.app';
   } catch { return false; }
 }
 
@@ -43,14 +45,14 @@ async function loadConnection() {
   }
 }
 function emitStatus(extra: Record<string, unknown> = {}) {
-  mainWindow?.webContents.send('agent:status-changed', { connected: Boolean(connection), deviceName: connection?.deviceName, shopName: connection?.shopName, agentVersion: VERSION, ...extra });
+  mainWindow?.webContents.send('agent:status-changed', { connected: Boolean(connection && sessionAuthenticated), deviceName: connection?.deviceName, shopName: connection?.shopName, agentVersion: VERSION, ...extra });
 }
 async function api(path: string, init: RequestInit = {}) {
-  if (!connection) throw new Error('Pair this computer with your shop first.');
+  if (!connection || !sessionAuthenticated) throw new Error('Sign in to Printly in this desktop app to connect this computer.');
   const response = await fetch(new URL(path, connection.apiUrl), { ...init, headers: { Authorization: `Bearer ${connection.token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } });
   if (!response.ok && response.status !== 204) {
     const message = (await response.json().catch(() => ({})) as {error?:string}).error ?? `Printly server returned ${response.status}.`;
-    if (response.status === 401) { connection = null; if (pollTimer) clearInterval(pollTimer); await rm(credentialsPath(), { force: true }); emitStatus({ error: message }); }
+    if (response.status === 401) { connection = null; sessionAuthenticated = false; if (pollTimer) clearInterval(pollTimer); await rm(credentialsPath(), { force: true }); emitStatus({ error: message }); }
     throw new Error(message);
   }
   return response.status === 204 ? null : response.json();
@@ -313,15 +315,14 @@ app.whenReady().then(async () => {
     const requestHeaders = { ...details.requestHeaders };
     try {
       const url = new URL(details.url);
-      if (connection && url.pathname.startsWith('/api/') && isAllowedOrigin(url.origin)) {
+      if (connection && sessionAuthenticated && url.pathname.startsWith('/api/') && isAllowedOrigin(url.origin)) {
         requestHeaders['X-Printly-Agent-Token'] = connection.token;
       }
     } catch { /* Ignore malformed or non-web request URLs. */ }
     callback({ requestHeaders });
   });
   createWindow();
-  if (connection && !pauseJobPolling) startPolling();
-  else if (connection && pauseJobPolling) console.warn('[AGENT] Automatic print-job polling is paused for this session.');
+  if (connection) console.log('[AGENT] Saved desktop token found; waiting for shop sign-in in the app before reconnecting.');
   app.setLoginItemSettings({ openAtLogin: true });
   const iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#079c73"/><path fill="#fff" d="M8 8h6v6H8zm10 0h6v6h-6zM8 18h6v6H8zm10 10V18h6v6h-6z"/></svg>';
   tray = new Tray(nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(iconSvg)}`));
@@ -339,7 +340,7 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin' && isQuitt
 ipcMain.handle('agent:status', async () => {
   const printersList = await discoverPrinters();
   return {
-    connected: Boolean(connection),
+    connected: Boolean(connection && sessionAuthenticated),
     deviceName: connection?.deviceName || hostname(),
     shopName: connection?.shopName,
     apiUrl: connection?.apiUrl,
@@ -349,7 +350,7 @@ ipcMain.handle('agent:status', async () => {
   };
 });
 ipcMain.handle('agent:refresh', async () => {
-  if (connection) {
+  if (connection && sessionAuthenticated) {
     try {
       await heartbeat();
       console.log('[AGENT] Manual refresh triggered successful heartbeat.');
@@ -362,7 +363,7 @@ ipcMain.handle('agent:refresh', async () => {
   }
   const printersList = await discoverPrinters();
   return {
-    connected: Boolean(connection),
+    connected: Boolean(connection && sessionAuthenticated),
     deviceName: connection?.deviceName || hostname(),
     shopName: connection?.shopName,
     apiUrl: connection?.apiUrl,
@@ -382,26 +383,48 @@ ipcMain.handle('agent:open-external', async (_event, url: string) => {
   }
   return false;
 });
-ipcMain.handle('agent:pair', async (event, input: { code: string; apiUrl: string }) => {
+ipcMain.handle('agent:connect', async (event) => {
   let senderOrigin = '';
   try { senderOrigin = new URL(event.sender.getURL()).origin; } catch { /* reject below */ }
-  if (!isAllowedOrigin(senderOrigin)) throw new Error('Pairing can only be started from Printly.');
-  const apiUrl = input.apiUrl.trim().replace(/\/+$/, '');
-  let parsedApiUrl: URL;
-  try { parsedApiUrl = new URL(apiUrl); } catch { throw new Error('Enter the Printly backend URL (https://…).'); }
-  if (parsedApiUrl.protocol !== 'https:' && !(parsedApiUrl.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsedApiUrl.hostname))) throw new Error('Use a secure HTTPS Printly server URL or localhost.');
-  const response = await fetch(new URL('/api/agent/pair', apiUrl), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pairingCode: input.code, deviceName: hostname(), agentVersion: VERSION }) });
-  const body = await response.json(); if (!response.ok) throw new Error(body.error ?? 'Could not pair this computer.');
-  const paired = pairAgentResponseSchema.parse(body);
-  connection = { apiUrl, token: paired.accessToken, deviceName: paired.deviceName, shopName: paired.shop.displayName, deviceId: paired.deviceId };
+  if (!isAllowedOrigin(senderOrigin) || !senderOrigin) throw new Error('Desktop sign-in can only connect from Printly.');
+  if (connection && sessionAuthenticated) {
+    return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
+  }
+  const apiUrl = renderApiUrl;
+  const cookieUrl = new URL('/', senderOrigin).toString();
+  const cookies = await session.defaultSession.cookies.get({ url: cookieUrl });
+  const sessionCookie = cookies.find((cookie) => cookie.name === 'printly.sid');
+  if (!sessionCookie) throw new Error('Sign in to your shop account in the desktop app first.');
+  const response = await fetch(new URL('/api/agent/connect', apiUrl), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: `printly.sid=${sessionCookie.value}`,
+      Origin: senderOrigin,
+    },
+    body: JSON.stringify({ deviceName: hostname(), agentVersion: VERSION }),
+  });
+  const body = await response.json() as { error?: string; deviceId?: string; deviceName?: string; accessToken?: string; shop?: { displayName?: string } };
+  if (!response.ok) throw new Error(body.error ?? 'Could not connect this desktop to your shop.');
+  if (!body.deviceId || !body.accessToken || !body.deviceName || !body.shop?.displayName) throw new Error('Printly returned incomplete desktop connection details.');
+  connection = { apiUrl, token: body.accessToken, deviceName: body.deviceName, shopName: body.shop.displayName, deviceId: body.deviceId };
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure storage is unavailable on this computer.');
   await writeFile(credentialsPath(), safeStorage.encryptString(JSON.stringify(connection)));
-  await heartbeat();
+  sessionAuthenticated = true;
+  await heartbeat().catch((error) => console.warn('[AGENT] Initial heartbeat failed; background polling will retry:', error));
   if (!pauseJobPolling) startPolling();
-  else console.warn('[AGENT] Paired successfully, but automatic print-job polling is paused for this session.');
+  else console.warn('[AGENT] Connected, but automatic print-job polling is paused for this session.');
   emitStatus(); return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
 });
-ipcMain.handle('agent:disconnect', async () => { if (pollTimer) clearInterval(pollTimer); connection = null; await rm(credentialsPath(), { force: true }); emitStatus(); return { connected: false }; });
+ipcMain.handle('agent:disconnect', async () => {
+  if (pollTimer) clearInterval(pollTimer);
+  if (connection && sessionAuthenticated) await api('/api/agent/disconnect', { method: 'POST' }).catch((error) => console.warn('[AGENT] Could not revoke the signed-in desktop session:', error));
+  connection = null;
+  sessionAuthenticated = false;
+  await rm(credentialsPath(), { force: true });
+  emitStatus();
+  return { connected: false };
+});
 ipcMain.handle('agent:print-ready', async (event, input: { id: string; error?: string }) => {
   const pending = pendingPrints.get(input.id);
   if (!pending || pending.window.webContents.id !== event.sender.id) return;

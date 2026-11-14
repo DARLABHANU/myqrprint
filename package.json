@@ -9,7 +9,7 @@
     "windows-agent"
   ],
   "scripts": {
-    "dev": "npm run build -w @printly/contracts && concurrently -k -n api,web,agent -c blue,green,magenta \"npm run dev -w server\" \"npm run dev -w client\" \"npm run dev -w windows-agent\"",
+    "dev": "npm run build -w @printly/contracts && concurrently -k -n web,agent -c green,magenta \"npm run dev -w client\" \"npm run dev -w windows-agent\"",
     "build": "npm run build -w @printly/contracts && npm run build -w server && npm run build -w client && npm run build -w windows-agent",
     "typecheck": "npm run build -w @printly/contracts && npm run typecheck -w @printly/contracts && npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w windows-agent",
     "test": "npm run test -w server",

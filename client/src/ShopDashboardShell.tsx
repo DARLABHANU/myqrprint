@@ -97,9 +97,18 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
     void Promise.all([
       json<{ shop: ShopSummary; agentOnline?: boolean }>("/api/shops/me"),
       json<{ user: AccountSummary }>("/api/auth/me"),
-    ]).then(([shopResponse, accountResponse]) => {
+    ]).then(async ([shopResponse, accountResponse]) => {
       setShop({ ...shopResponse.shop, agentOnline: Boolean(shopResponse.agentOnline) });
       setAccount(accountResponse.user);
+      if (window.printly) {
+        const status = await window.printly.getStatus();
+        if (!status.connected) {
+          if (!window.printly.connect) throw new Error("This desktop app is outdated. Install the latest Printly desktop app to connect with your shop login.");
+          await window.printly.connect();
+          const refreshedShop = await json<{ shop: ShopSummary; agentOnline?: boolean }>("/api/shops/me");
+          setShop({ ...refreshedShop.shop, agentOnline: Boolean(refreshedShop.agentOnline) });
+        }
+      }
     }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load your shop."))
       .finally(() => setLoading(false));
   }, []);
@@ -207,7 +216,11 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
 
   async function signOut() {
     setBusy(true); setError("");
-    try { await json<void>("/api/auth/logout", { method: "POST" }); window.location.assign("/login"); }
+    try {
+      if (window.printly) await window.printly.disconnect();
+      await json<void>("/api/auth/logout", { method: "POST" });
+      window.location.assign("/login");
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Could not sign out."); setBusy(false); }
   }
 

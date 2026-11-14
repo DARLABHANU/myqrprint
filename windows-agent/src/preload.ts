@@ -4,8 +4,8 @@ import type { AgentStatus, PrintPayload } from './types';
 contextBridge.exposeInMainWorld('printly', {
   getStatus: (): Promise<AgentStatus> => ipcRenderer.invoke('agent:status'),
   refresh: (): Promise<AgentStatus> => ipcRenderer.invoke('agent:refresh'),
+  connect: () => ipcRenderer.invoke('agent:connect'),
   setShopOnline: (isOnline: boolean) => ipcRenderer.invoke('agent:shop-online', isOnline),
-  pair: (code: string, apiUrl: string) => ipcRenderer.invoke('agent:pair', { code, apiUrl }),
   disconnect: () => ipcRenderer.invoke('agent:disconnect'),
   openExternal: (url: string) => ipcRenderer.invoke('agent:open-external', url),
   onPrintPayload: (callback: (payload: PrintPayload) => void) => {

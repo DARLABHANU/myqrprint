@@ -4,7 +4,6 @@ import {
   Check,
   CheckCircle2,
   Clock,
-  Copy,
   Download,
   FileText,
   Monitor,
@@ -68,8 +67,8 @@ declare global {
     printly?: {
       getStatus: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string }>;
       refresh: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string }>;
+      connect?: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string }>;
       setShopOnline: (isOnline: boolean) => Promise<{ isOnline: boolean; agentOnline: boolean }>;
-      pair: (code: string, apiUrl: string) => Promise<{ connected: boolean; deviceName: string }>;
       disconnect: () => Promise<{ connected: boolean }>;
       openExternal: (url: string) => Promise<boolean>;
       onStatus: (callback: (status: unknown) => void) => () => void;
@@ -92,13 +91,6 @@ export function PrinterManagementPage() {
   const [printers, setPrinters] = useState<ShopPrinterItem[]>([]);
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [shop, setShop] = useState<ShopSettings | null>(null);
-
-  // Pairing code state
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [pairingExpiresAt, setPairingExpiresAt] = useState<Date | null>(null);
-  const [countdownSeconds, setCountdownSeconds] = useState(0);
-  const [generatingCode, setGeneratingCode] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
 
   // Modals
   const [howToModalOpen, setHowToModalOpen] = useState(false);
@@ -185,55 +177,6 @@ export function PrinterManagementPage() {
     }, 15000);
     return () => clearInterval(interval);
   }, []);
-
-  // Countdown timer for pairing code
-  useEffect(() => {
-    if (!pairingExpiresAt) return;
-    const updateCountdown = () => {
-      const remaining = Math.max(0, Math.floor((pairingExpiresAt.getTime() - Date.now()) / 1000));
-      setCountdownSeconds(remaining);
-      if (remaining <= 0) {
-        setPairingCode(null);
-        setPairingExpiresAt(null);
-      }
-    };
-    updateCountdown();
-    const timer = setInterval(updateCountdown, 1000);
-    return () => clearInterval(timer);
-  }, [pairingExpiresAt]);
-
-  async function handleGeneratePairingCode() {
-    setGeneratingCode(true);
-    setError("");
-    setSuccess("");
-    try {
-      const response = await fetch("/api/agent/pairing-code", {
-        method: "POST",
-        credentials: "same-origin",
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not generate pairing code.");
-
-      setPairingCode(data.pairingCode);
-      setPairingExpiresAt(new Date(data.expiresAt));
-
-      // If running inside the Electron agent window, automatically pair!
-      if (window.printly) {
-        try {
-          const apiUrl = window.location.origin;
-          await window.printly.pair(data.pairingCode, apiUrl);
-          setSuccess("Connected! This PC is paired with your shop.");
-          await loadData();
-        } catch (pairErr) {
-          setError(pairErr instanceof Error ? pairErr.message : "Automatic desktop pairing failed.");
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get pairing code.");
-    } finally {
-      setGeneratingCode(false);
-    }
-  }
 
   async function handleDisconnectDevice(deviceId: string) {
     if (!window.confirm("Disconnect and revoke this computer? It will stop receiving print jobs.")) return;
@@ -467,14 +410,6 @@ export function PrinterManagementPage() {
   const availablePrinters = printers.filter((p) => p.status === "ready");
   const onlineDevices = devices.filter((d) => d.status === "online");
 
-  function copyCode() {
-    if (!pairingCode) return;
-    navigator.clipboard.writeText(pairingCode).then(() => {
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    }).catch(() => {});
-  }
-
   if (loading) {
     return (
       <div className="workspace-loading" style={{ minHeight: "50vh", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "#64748b" }}>
@@ -557,54 +492,6 @@ export function PrinterManagementPage() {
           </div>
         )}
 
-        {/* Pairing Code Banner (if active) */}
-        {pairingCode && (
-          <div
-            style={{
-              marginBottom: 24,
-              border: "2px solid #0aa579",
-              background: "#effcf6",
-              borderRadius: 14,
-              padding: "18px 22px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-            }}
-          >
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#078c68", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                <Clock size={15} /> Pairing Code (Expires in {Math.floor(countdownSeconds / 60)}m {countdownSeconds % 60}s)
-              </div>
-              <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: 6, color: "#07865f", margin: "6px 0" }}>
-                {pairingCode.slice(0, 3)} {pairingCode.slice(3)}
-              </div>
-              <p style={{ color: "#475569", fontSize: 12, margin: 0 }}>
-                Open the <b>Printly Desktop Agent</b> on your Windows computer and enter this code to link your PC.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={copyCode}
-              style={{
-                border: "1px solid #079d72",
-                background: "#ffffff",
-                color: "#078c68",
-                padding: "8px 16px",
-                borderRadius: 8,
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Copy size={14} /> {copiedCode ? "Copied!" : "Copy Code"}
-            </button>
-          </div>
-        )}
-
         {/* Section 1: Connected PCs Card */}
         <div
           style={{
@@ -625,29 +512,6 @@ export function PrinterManagementPage() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {isInsideElectron && devices.length === 0 && (
-                <button
-                  type="button"
-                  onClick={handleGeneratePairingCode}
-                  disabled={generatingCode}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 14px",
-                    borderRadius: 8,
-                    background: "#079c73",
-                    border: "none",
-                    color: "#ffffff",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  <Zap size={13} /> {generatingCode ? "Pairing…" : "Pair This PC"}
-                </button>
-              )}
-
               <button
                 type="button"
                 onClick={() => setHowToModalOpen(true)}
@@ -684,28 +548,11 @@ export function PrinterManagementPage() {
             >
               <Monitor size={32} style={{ color: "#94a3b8", margin: "0 auto 8px" }} />
               <b style={{ fontSize: 14, color: "#0f172a", display: "block" }}>No Windows Computer Connected Yet</b>
-              <p style={{ color: "#64748b", fontSize: 12, margin: "4px auto 14px", maxWidth: 440 }}>
+              <p style={{ color: "#64748b", fontSize: 12, margin: "4px auto 0", maxWidth: 440 }}>
                 {isInsideElectron
-                  ? "You are running Printly in the Desktop App! Click 'Pair This PC' to connect your local Windows printers automatically."
-                  : "Run the Printly desktop agent on your Windows PC and click 'Connect Computer' to pair it with your shop."}
+                  ? "Sign in with your shop account in the desktop app. This computer connects automatically and discovers its Windows printers."
+                  : "Open the Printly desktop app on the computer connected to your printers, then sign in with this shop account. It will connect automatically."}
               </p>
-              <button
-                type="button"
-                onClick={handleGeneratePairingCode}
-                disabled={generatingCode}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: 8,
-                  background: "#079c73",
-                  color: "#ffffff",
-                  border: "none",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                {generatingCode ? "Connecting…" : isInsideElectron ? "⚡ Connect This Computer Now" : "Get 6-digit Pairing Code"}
-              </button>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1403,9 +1250,9 @@ export function PrinterManagementPage() {
                     2
                   </span>
                   <div>
-                    <b>Pair your computer</b>
+                    <b>Sign in to connect this computer</b>
                     <p style={{ margin: "2px 0 0", color: "#64748b" }}>
-                      Click <b>"Pair This PC"</b> (automatic in desktop app) or enter the 6-digit code.
+                      Open the desktop app and sign in with the same shop email and password. The app securely connects to this shop automatically.
                     </p>
                   </div>
                 </div>
