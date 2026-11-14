@@ -257,28 +257,48 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    let firstRequest = true;
+    let requestInFlight = false;
     async function loadShop() {
+      if (requestInFlight || controller.signal.aborted) return;
+      requestInFlight = true;
       try {
         const response = await fetch(`/api/public/shops/${encodeURIComponent(slug)}`, {
           credentials: "same-origin",
+          cache: "no-store",
           signal: controller.signal,
         });
         if (!response.ok) throw new Error(await getApiError(response));
         const body = (await response.json()) as { shop: PublicShop };
         setShop(body.shop);
-        setSelectedPayment(body.shop.upiId ? "upi" : "cash");
-        const firstSize = body.shop.enabledPaperSizes[0] ?? "A4";
-        setOptions((current) => ({ ...current, paperSize: firstSize }));
+        setError("");
+        if (firstRequest) {
+          setSelectedPayment(body.shop.upiId ? "upi" : "cash");
+          const firstSize = body.shop.enabledPaperSizes[0] ?? "A4";
+          setOptions((current) => ({ ...current, paperSize: firstSize }));
+        }
       } catch (reason) {
         if (reason instanceof Error && reason.name !== "AbortError") {
+          // Fail closed when the agent disconnects or the shop is switched offline.
+          // This also removes the checkout UI from pages that were already open.
+          setShop(null);
+          setQuote(null);
           setError(reason.message || "This shop is unavailable.");
         }
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          firstRequest = false;
+        }
+        requestInFlight = false;
       }
     }
     void loadShop();
-    return () => controller.abort();
+    const timer = window.setInterval(() => void loadShop(), 5_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
   }, [slug]);
 
   const isPhotoOrder = uploads.length > 0 && uploads.every((item) => item.kind === "photo");
@@ -538,9 +558,10 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
           <Store size={36} color="#dc2626" style={{ margin: "0 auto 12px" }} />
           <h1 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>Shop Unavailable</h1>
           <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "0 0 20px" }}>{error}</p>
-          <a href="/" style={{ display: "inline-block", padding: "8px 18px", borderRadius: 8, background: "#079c73", color: "#fff", fontSize: 13, fontWeight: 700 }}>
-            Go to Printly
-          </a>
+          <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5, margin: "-8px 0 18px" }}>This page will check again automatically. Please try again when the shop is open.</p>
+          <button type="button" onClick={() => window.location.reload()} style={{ display: "inline-block", padding: "9px 18px", borderRadius: 8, background: "#079c73", color: "#fff", fontSize: 13, fontWeight: 700, border: 0, cursor: "pointer" }}>
+            Check again
+          </button>
         </div>
       </div>
     );
