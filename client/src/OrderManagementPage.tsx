@@ -66,7 +66,7 @@ type ShopInfo = {
 };
 type OrderOptions = MerchantOrder["options"];
 type Action = "confirm_payment" | "approve_order" | "mark_ready" | "requeue" | "reject" | "cancel";
-type Filter = "all" | "approval" | "queue" | "printing" | "submitted" | "cash" | "printed" | "failed";
+type Filter = "all" | "payment" | "approval" | "queue" | "printing" | "submitted" | "cash" | "printed" | "failed";
 
 const photoLayouts = [
   { value: "single", label: "1 photo per page" },
@@ -78,7 +78,7 @@ const photoLayouts = [
 ];
 
 const statusLabels: Record<OrderStatus, string> = {
-  awaiting_payment: "UPI payment to verify",
+  awaiting_payment: "Payment pending",
   awaiting_cash: "Cash due at counter",
   needs_approval: "Needs approval",
   queued: "Awaiting manual fulfillment",
@@ -93,6 +93,7 @@ const statusLabels: Record<OrderStatus, string> = {
 
 const filterLabels: Array<{ id: Filter; label: string }> = [
   { id: "all", label: "All" },
+  { id: "payment", label: "Awaiting payment" },
   { id: "approval", label: "Needs approval" },
   { id: "queue", label: "Manual fulfillment" },
   { id: "printing", label: "Legacy status" },
@@ -117,8 +118,10 @@ function visibleInFilter(order: MerchantOrder, filter: Filter): boolean {
   switch (filter) {
     case "all":
       return true;
+    case "payment":
+      return order.status === "awaiting_payment";
     case "approval":
-      return order.status === "needs_approval" || order.status === "awaiting_payment";
+      return order.status === "needs_approval";
     case "queue":
       return order.status === "queued";
     case "printing":
@@ -137,11 +140,13 @@ function visibleInFilter(order: MerchantOrder, filter: Filter): boolean {
 function availableActions(order: MerchantOrder): Array<{ action: Action; label: string; primary?: boolean }> {
   switch (order.status) {
     case "awaiting_payment":
-      return [
-        { action: "confirm_payment", label: "Confirm UPI received", primary: true },
-        { action: "reject", label: "Reject order" },
-        { action: "cancel", label: "Cancel order" },
-      ];
+      return order.paymentMethod === "razorpay"
+        ? [{ action: "cancel", label: "Cancel pending order" }]
+        : [
+            { action: "confirm_payment", label: "Confirm UPI received", primary: true },
+            { action: "reject", label: "Reject order" },
+            { action: "cancel", label: "Cancel order" },
+          ];
     case "awaiting_cash":
       return [
         { action: "confirm_payment", label: "Confirm cash received", primary: true },
@@ -167,6 +172,11 @@ function availableActions(order: MerchantOrder): Array<{ action: Action; label: 
     default:
       return [];
   }
+}
+
+function orderStatusLabel(order: MerchantOrder): string {
+  if (order.status === "awaiting_payment") return order.paymentMethod === "razorpay" ? "Razorpay payment pending" : "UPI payment to verify";
+  return statusLabels[order.status];
 }
 
 export function OrderManagementPage() {
@@ -233,7 +243,8 @@ export function OrderManagementPage() {
   const pageCount = Math.max(1, Math.ceil(matchingOrders.length / pageSize));
   const visibleOrders = matchingOrders.slice((page - 1) * pageSize, page * pageSize);
   const counts = useMemo(() => ({
-    approval: orders.filter((order) => order.status === "needs_approval" || order.status === "awaiting_payment").length,
+    payment: orders.filter((order) => order.status === "awaiting_payment").length,
+    approval: orders.filter((order) => order.status === "needs_approval").length,
     queue: orders.filter((order) => order.status === "queued").length,
     printing: orders.filter((order) => order.status === "printing").length,
     submitted: orders.filter((order) => order.status === "submitted").length,
@@ -317,7 +328,7 @@ export function OrderManagementPage() {
     const files = receipt.document.createElement("div"); files.className = "line";
     for (const file of order.files) { const row = receipt.document.createElement("p"); row.textContent = `${file.name} · ${file.pageCount} pages${file.available ? "" : " · file expired"}`; files.append(row); }
     const total = receipt.document.createElement("p"); total.className = "line total"; total.textContent = `Total ${money(order.amountPaise)}`;
-    const payment = receipt.document.createElement("p"); payment.textContent = `${order.paymentMethod.toUpperCase()} · ${order.paymentStatus} · ${statusLabels[order.status]}`;
+    const payment = receipt.document.createElement("p"); payment.textContent = `${order.paymentMethod.toUpperCase()} · ${order.paymentStatus} · ${orderStatusLabel(order)}`;
     const printButton = receipt.document.createElement("button"); printButton.textContent = "Print / Save receipt"; printButton.onclick = () => receipt.print();
     main.append(heading, title, date, customer, options, files, total, payment, printButton);
     receipt.document.body.replaceChildren(main); receipt.focus();
@@ -347,7 +358,7 @@ export function OrderManagementPage() {
               : <><div className="merchant-order-list">
                 {visibleOrders.map((order) => <article className="merchant-order-card" key={order.id}>
                   <div className="merchant-order-heading">
-                    <div><span className="merchant-order-code">#{order.code}</span><span className={`order-status-pill status-${order.status}`}>{statusLabels[order.status]}</span></div>
+                    <div><span className="merchant-order-code">#{order.code}</span><span className={`order-status-pill status-${order.status}`}>{orderStatusLabel(order)}</span></div>
                     <time>{new Date(order.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</time>
                   </div>
                   <div className="merchant-order-summary">

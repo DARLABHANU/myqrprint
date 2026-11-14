@@ -25,7 +25,21 @@ type ShopSummary = {
   subscriptionOrdersUsed?: number;
 };
 type AccountSummary = { ownerName: string; email: string };
-type OrderStatus = { id?: string; _id?: string; code: string; status: string };
+type OrderStatus = {
+  id?: string;
+  _id?: string;
+  code: string;
+  status: string;
+  paymentMethod: "upi" | "cash" | "pay_here" | "razorpay";
+  paymentStatus: "unverified" | "awaiting_cash" | "paid";
+};
+
+type SeenOrderState = { status: string; notificationEligible: boolean };
+
+function isNewOrderNotificationEligible(order: OrderStatus): boolean {
+  if (order.paymentMethod === "cash" && order.status === "awaiting_cash") return true;
+  return order.paymentStatus === "paid" && !["cancelled", "rejected", "expired"].includes(order.status);
+}
 
 const navGroups = [
   { label: "MAIN", links: [
@@ -89,7 +103,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const seenOrders = useRef<Map<string, string> | null>(null);
+  const seenOrders = useRef<Map<string, SeenOrderState> | null>(null);
   const preferencesRef = useRef(shop?.notificationPreferences);
   preferencesRef.current = shop?.notificationPreferences;
 
@@ -133,11 +147,16 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
         ]);
         if (!mounted) return;
         setShop({ ...shopResponse.shop, agentOnline: Boolean(shopResponse.agentOnline) });
-        const current = new Map(response.orders.map((order) => [order.code, order.status]));
+        const current = new Map(response.orders.map((order) => [order.code, {
+          status: order.status,
+          notificationEligible: isNewOrderNotificationEligible(order),
+        }]));
         if (seenOrders.current) {
           const preferences = preferencesRef.current;
-          const newlyCreated = response.orders.filter((order) => !seenOrders.current?.has(order.code));
-          const newlyFailed = response.orders.filter((order) => seenOrders.current?.get(order.code) !== "failed" && order.status === "failed");
+          const newlyCreated = response.orders.filter((order) =>
+            isNewOrderNotificationEligible(order) && !seenOrders.current?.get(order.code)?.notificationEligible,
+          );
+          const newlyFailed = response.orders.filter((order) => seenOrders.current?.get(order.code)?.status !== "failed" && order.status === "failed");
           const messages = [
             ...(newlyCreated.length && preferences?.newOrder ? [`${newlyCreated.length} new print job${newlyCreated.length === 1 ? "" : "s"}: ${newlyCreated.map((order) => `#${order.code}`).join(", ")}`] : []),
             ...(newlyFailed.length && preferences?.printFailed ? [`${newlyFailed.length} print job${newlyFailed.length === 1 ? "" : "s"} failed: ${newlyFailed.map((order) => `#${order.code}`).join(", ")}`] : []),

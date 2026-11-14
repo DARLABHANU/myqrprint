@@ -699,6 +699,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
   const upiLink = shop.upiId
     ? `upi://pay?pa=${encodeURIComponent(shop.upiId)}&pn=${encodeURIComponent(shop.displayName)}${currentAmount > 0 ? `&am=${currentAmount.toFixed(2)}` : ""}&cu=INR&tn=${encodeURIComponent(order ? `Printly Order ${order.code}` : `Print at ${shop.displayName}`)}`
     : "";
+  const razorpayPaymentPending = order?.paymentMethod === "razorpay" && order.paymentStatus !== "paid";
 
   return (
     <div
@@ -818,20 +819,20 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
           </div>
         )}
 
-        {/* ORDER SUCCESS VIEW */}
+        {/* Keep pending payment visually distinct from an accepted print order. */}
         {order ? (
           <div style={{ background: "#ffffff", borderRadius: 16, border: "1px solid #e2e8f0", padding: "28px 22px", textAlign: "center", marginBottom: 20 }}>
-            <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#ecfdf5", color: "#10b981", display: "grid", placeItems: "center", margin: "0 auto 14px" }}>
-              <Check size={28} strokeWidth={2.5} />
+            <div style={{ width: 52, height: 52, borderRadius: "50%", background: razorpayPaymentPending ? "#fff7ed" : "#ecfdf5", color: razorpayPaymentPending ? "#ea580c" : "#10b981", display: "grid", placeItems: "center", margin: "0 auto 14px" }}>
+              {razorpayPaymentPending ? <Clock size={26} strokeWidth={2.5} /> : <Check size={28} strokeWidth={2.5} />}
             </div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#079c73", letterSpacing: "1px", textTransform: "uppercase" }}>ORDER RECEIVED</span>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "6px 0 10px" }}>Your print order is in!</h1>
+            <span style={{ fontSize: 11, fontWeight: 800, color: razorpayPaymentPending ? "#c2410c" : "#079c73", letterSpacing: "1px", textTransform: "uppercase" }}>{razorpayPaymentPending ? "PAYMENT REQUIRED" : "ORDER RECEIVED"}</span>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "6px 0 10px" }}>{razorpayPaymentPending ? "Complete payment to place your order" : "Your print order is in!"}</h1>
             <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "0 0 20px" }}>
-              Show this pickup code at the counter. The shopkeeper will verify and print your order.
+              {razorpayPaymentPending ? "Your files are saved, but the shop has not received a paid print order yet. Complete payment below to continue." : "Show this pickup code at the counter. The shopkeeper will verify and print your order."}
             </p>
 
             <div style={{ background: "#f8fafc", border: "1.5px dashed #cbd5e1", borderRadius: 14, padding: "16px", marginBottom: 20 }}>
-              <small style={{ color: "#64748b", fontSize: 11, fontWeight: 700, letterSpacing: "0.5px" }}>PICKUP CODE</small>
+              <small style={{ color: "#64748b", fontSize: 11, fontWeight: 700, letterSpacing: "0.5px" }}>{razorpayPaymentPending ? "ORDER REFERENCE" : "PICKUP CODE"}</small>
               <div style={{ fontSize: 32, fontWeight: 900, color: "#0f172a", letterSpacing: "3px", margin: "4px 0" }}>
                 #{order.code}
               </div>
@@ -841,7 +842,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                   : order.paymentMethod === "upi"
                     ? "Waiting for UPI Verification"
                     : order.paymentMethod === "razorpay"
-                      ? "Waiting for Razorpay payment"
+                      ? "Payment not completed · not sent to the shop"
                     : "Cash Due at Counter"}
               </span>
             </div>

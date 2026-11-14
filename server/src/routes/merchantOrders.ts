@@ -106,6 +106,10 @@ merchantOrdersRouter.get("/orders", async (request, response, next) => {
     const orders = await PrintOrder.find({
       shopId: shop._id,
       ...(parsedStatus?.success ? { status: parsedStatus.data } : {}),
+      // A Razorpay checkout is only a payment attempt until the gateway confirms capture.
+      // Keep unpaid attempts out of shop print jobs and order alerts; they remain available
+      // to the customer for retry and appear here once captured.
+      $or: [{ paymentMethod: { $ne: "razorpay" } }, { paymentStatus: "paid" }],
     })
       .sort({ createdAt: -1 })
       .limit(1000);

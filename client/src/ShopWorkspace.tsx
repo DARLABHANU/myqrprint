@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
+const publicCustomerOrigin = "https://myqrprint.vercel.app";
+
 type User = {
   id: string;
   ownerName: string;
@@ -166,7 +168,7 @@ export function ShopQrCodePage() {
   const [posterColor, setPosterColor] = useState("#079b70");
   const [posterLanguage, setPosterLanguage] = useState<"en" | "hi">("en");
   useEffect(() => { void requestJson<{ shop: ShopSettings }>("/api/shops/me").then(({ shop: saved }) => setShop({ ...createEmptyShop(), ...saved })).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load your shop QR code.")).finally(() => setLoading(false)); }, []);
-  function url() { return new URL(`/p/${encodeURIComponent(shop.slug)}`, window.location.origin).toString(); }
+  function url() { return new URL(`/p/${encodeURIComponent(shop.slug)}`, publicCustomerOrigin).toString(); }
   async function copyLink() { setCopying(true); setError(""); try { await navigator.clipboard.writeText(url()); setNotice("Customer page link copied."); } catch { setError("Could not copy the customer link. Copy it from the address below."); } finally { setCopying(false); } }
   function getSvg() { return document.querySelector<SVGSVGElement>("#shop-qr-code svg"); }
   function downloadQr() { const svg = getSvg(); if (!svg) { setError("The QR code is not ready yet."); return; } const objectUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml;charset=utf-8" })); const link = document.createElement("a"); link.href = objectUrl; link.download = `${shop.slug}-printly-qr.svg`; link.click(); URL.revokeObjectURL(objectUrl); }
