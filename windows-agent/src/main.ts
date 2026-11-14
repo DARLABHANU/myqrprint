@@ -282,7 +282,7 @@ function createWindow() {
   void mainWindow.loadURL(webUrl);
 
   mainWindow.webContents.on('did-finish-load', () => {
-    if (connection) {
+    if (connection && sessionAuthenticated) {
       void heartbeat().catch((err) => console.warn('[AGENT] Post-load heartbeat failed:', err));
     }
   });
