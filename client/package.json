@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc -b --pretty",
-    "prebuild": "npm --prefix ../packages/contracts run build"
+    "typecheck": "tsc -b --pretty"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
