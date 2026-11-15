@@ -52,6 +52,7 @@ type PublicShop = {
   upiId: string;
   cashEnabled: boolean;
   razorpayEnabled?: boolean;
+  razorpayMode?: "test" | "live" | null;
   enabledPaperSizes: string[];
   colourEnabled: boolean;
   duplexEnabled: boolean;
@@ -1970,7 +1971,9 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                     </div>
                     <div>
                       <b style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Razorpay</b>
-                      <small style={{ color: "#64748b", fontSize: 11 }}>UPI · Cards · Netbanking · Wallet · Test mode</small>
+                      <small style={{ color: "#64748b", fontSize: 11 }}>
+                        UPI · Cards · Netbanking · Wallet · {shop.razorpayMode === "live" ? "Live payments" : "Test mode"}
+                      </small>
                     </div>
                   </div>
                   {selectedPayment === "razorpay"

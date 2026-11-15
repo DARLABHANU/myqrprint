@@ -180,6 +180,7 @@ function publicShop(shop: InstanceType<typeof Shop> | null) {
     upiId: "",
     cashEnabled: record.cashEnabled,
     razorpayEnabled: isRazorpayEnabled() && record.razorpayEnabled !== false,
+    razorpayMode: isRazorpayEnabled() ? getRazorpayMode() : null,
     enabledPaperSizes: record.enabledPaperSizes,
     colourEnabled: record.colourEnabled,
     duplexEnabled: record.duplexEnabled,
