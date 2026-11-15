@@ -4,6 +4,7 @@ import { app } from "./app.js";
 import { cleanupExpiredUploads } from "./services/uploadCleanup.js";
 import { sendDailyShopSummaries } from "./services/dailySummary.js";
 import { isCloudinaryEnabled } from "./services/cloudinary.js";
+import { expireDisconnectedAgents } from "./services/agentPresence.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const mongoUri = process.env.MONGODB_URI ?? "";
@@ -21,6 +22,13 @@ async function start() {
   } else {
     console.log("[UrQrPrint Server] Cloudinary not configured; using local storage.");
   }
+  await expireDisconnectedAgents();
+  const agentPresenceTimer = setInterval(() => {
+    void expireDisconnectedAgents().catch((error: unknown) => {
+      console.error("Could not expire disconnected desktop agents:", error);
+    });
+  }, 10 * 1000);
+  agentPresenceTimer.unref();
   await cleanupExpiredUploads();
   const cleanupTimer = setInterval(() => {
     void cleanupExpiredUploads().catch((error: unknown) => {
