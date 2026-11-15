@@ -202,9 +202,22 @@ authRouter.post("/register/verify-code", authLimiter, async (request, response, 
       return;
     }
     const user = await User.create({ ownerName, email, passwordHash, termsAcceptedAt, emailVerifiedAt: new Date() });
+    const trialStartedAt = new Date();
     let shop;
     try {
-      shop = await Shop.create({ ownerId: user._id, slug: makeSlug(shopName), displayName: shopName, ownerName, mobile, email });
+      shop = await Shop.create({
+        ownerId: user._id,
+        slug: makeSlug(shopName),
+        displayName: shopName,
+        ownerName,
+        mobile,
+        email,
+        subscriptionPlan: "demo",
+        subscriptionStartedAt: trialStartedAt,
+        subscriptionExpiresAt: new Date(trialStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000),
+        subscriptionOrderLimit: 50,
+        subscriptionOrdersUsed: 0,
+      });
     } catch (error) {
       await User.deleteOne({ _id: user._id });
       throw error;
@@ -290,9 +303,22 @@ authRouter.post("/google/register", authLimiter, async (request, response, next)
       return;
     }
     const user = await User.create({ ownerName: parsed.data.ownerName, email: claims.email, termsAcceptedAt: new Date(), emailVerifiedAt: new Date() });
+    const trialStartedAt = new Date();
     let shop;
     try {
-      shop = await Shop.create({ ownerId: user._id, slug: makeSlug(parsed.data.shopName), displayName: parsed.data.shopName, ownerName: parsed.data.ownerName, mobile: parsed.data.mobile, email: claims.email });
+      shop = await Shop.create({
+        ownerId: user._id,
+        slug: makeSlug(parsed.data.shopName),
+        displayName: parsed.data.shopName,
+        ownerName: parsed.data.ownerName,
+        mobile: parsed.data.mobile,
+        email: claims.email,
+        subscriptionPlan: "demo",
+        subscriptionStartedAt: trialStartedAt,
+        subscriptionExpiresAt: new Date(trialStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000),
+        subscriptionOrderLimit: 50,
+        subscriptionOrdersUsed: 0,
+      });
     } catch (error) {
       await User.deleteOne({ _id: user._id });
       throw error;

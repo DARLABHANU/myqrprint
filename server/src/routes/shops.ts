@@ -147,6 +147,16 @@ shopsRouter.patch("/online", requireDesktopAgent, async (request, response, next
   const parsed = z.object({ isOnline: z.boolean() }).strict().safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Choose whether your shop is online." }); return; }
   try {
+    const ownerShop = await Shop.findOne({ ownerId: request.session.userId }).select("subscriptionExpiresAt subscriptionOrderLimit subscriptionOrdersUsed");
+    if (parsed.data.isOnline && ownerShop && (
+      (ownerShop.subscriptionExpiresAt && ownerShop.subscriptionExpiresAt.getTime() <= Date.now())
+      || (ownerShop.subscriptionOrderLimit > 0 && ownerShop.subscriptionOrdersUsed >= ownerShop.subscriptionOrderLimit)
+    )) {
+      response.status(403).json({ error: ownerShop.subscriptionExpiresAt && ownerShop.subscriptionExpiresAt.getTime() <= Date.now()
+        ? "Your trial or plan has expired. Renew your plan before setting the shop online."
+        : "Your 50-order free trial is used. Choose a paid plan before setting the shop online." });
+      return;
+    }
     const shop = await Shop.findOneAndUpdate({ ownerId: request.session.userId }, { $set: { isOnline: parsed.data.isOnline } }, { new: true }).select("isOnline");
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
     response.json({ isOnline: shop.isOnline });

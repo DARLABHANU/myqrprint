@@ -49,18 +49,18 @@ const steps = [
   },
   {
     number: "03",
-    title: "You fulfill, they pick up",
+    title: "Print and hand over",
     description:
-      "Confirm cash payments, approve paid jobs when required, and track printing through pickup.",
+      "The online paid job prints through your agent when auto-print is on. Cash orders wait for your confirmation.",
     icon: Printer,
   },
 ];
 
 const benefits = [
   "No app or account needed for your customers",
-  "UPI goes directly to your shop",
+  "Razorpay checkout and counter cash",
   "Order uploads with clear retention controls",
-  "You manage payment, manual fulfillment, and pickup status",
+  "Choose auto-print or approval, then track pickup",
 ];
 
 export default function App() {
@@ -176,7 +176,7 @@ function LandingPage() {
             <div className="eyebrow"><span className="eyebrow-dot" /> Made for the modern print shop</div>
             <h1>Less time<br />taking orders.<br /><span>More control at pickup.</span></h1>
             <p className="hero-description">
-              Let customers send orders from their phone. You set prices and confirm direct payments. Printer automation is paused; manual order management remains available.
+              Customers send print orders from their phone and pay through Razorpay or at your counter. Your Windows agent prints verified online orders according to your auto-print setting.
             </p>
             <div className="hero-actions">
               <a className="button button-dark button-large" href="/register">
@@ -225,9 +225,9 @@ function LandingPage() {
           <div className="trust-items">
             <span><Check size={15} /> No customer app</span>
             <i />
-            <span><Check size={15} /> Direct UPI to your shop</span>
+            <span><Check size={15} /> Razorpay checkout or cash at counter</span>
             <i />
-            <span><Check size={15} /> You approve every order</span>
+            <span><Check size={15} /> Choose auto-print or approval</span>
           </div>
         </section>
 
@@ -255,7 +255,7 @@ function LandingPage() {
           <div className="control-visual" aria-hidden="true">
             <div className="control-window">
               <div className="window-top"><span /><span /><span /><b>Today’s orders</b><small>● Shop online</small></div>
-              <div className="queue-summary"><span><small>NEW ORDERS</small><b>03</b></span><span><small>AWAITING PAYMENT</small><b>02</b></span><span><small>MANUAL FULFILLMENT</small><b>01</b></span></div>
+              <div className="queue-summary"><span><small>NEW ORDERS</small><b>03</b></span><span><small>AWAITING PAYMENT</small><b>02</b></span><span><small>PRINT QUEUE</small><b>01</b></span></div>
               <div className="queue-row"><span className="file-thumb"><FileText size={17} /></span><span><b>Assignment-final.pdf</b><small>4 pages · A4 B&W</small></span><strong>₹20</strong><span className="status-pill">Review</span></div>
               <div className="queue-row"><span className="file-thumb image-thumb"><span>IMG</span></span><span><b>passport-photo.jpg</b><small>2 copies · 4 × 6 layout</small></span><strong>₹40</strong><span className="status-pill status-green">Paid</span></div>
               <div className="queue-row"><span className="file-thumb"><FileText size={17} /></span><span><b>Form-2026.pdf</b><small>2 pages · A4 colour</small></span><strong>₹30</strong><span className="status-pill status-muted">Cash</span></div>
@@ -280,7 +280,7 @@ function LandingPage() {
             <p>Start with a 7-day trial, then choose a shop plan as your customer orders grow.</p>
           </div>
           <div className="marketing-pricing-card">
-            <div><span className="pricing-card-kicker">SHOP PLANS</span><h3>From ₹199 / month</h3><p>Starter, Professional, and Enterprise plans are available, along with a 7-day free trial.</p></div>
+            <div><span className="pricing-card-kicker">SHOP PLANS</span><h3>₹50 monthly or ₹500 yearly</h3><p>Start with a 7-day trial for up to 50 print orders. Annual billing saves ₹100.</p></div>
             <ul><li><Check size={15} /> Plan duration and order quota shown before activation</li><li><Check size={15} /> Subscription payments are separate from customer print orders</li><li><Check size={15} /> Admin reviews subscription payment references</li></ul>
             <a className="button button-dark" href="/pricing">Subscription details <ArrowRight size={15} /></a>
             <small>Customer online payments use Razorpay when enabled; cash is collected by the shop.</small>

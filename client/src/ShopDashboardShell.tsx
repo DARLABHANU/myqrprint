@@ -257,9 +257,9 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
   ] : [];
 
   const planTitle = !shop?.subscriptionPlan || shop.subscriptionPlan === "demo"
-    ? "Free Demo"
+    ? "Free Trial"
     : shop.subscriptionPlan === "starter"
-      ? "Starter Plan"
+      ? "UrQrPrint Plan"
       : shop.subscriptionPlan === "pro"
         ? "Pro Plan"
         : "Enterprise";
@@ -271,7 +271,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
   const daysBarPercent = Math.min(100, Math.max(8, (daysLeft / 7) * 100));
   const maxOrders = shop?.subscriptionOrderLimit ?? 50;
   const usedOrders = shop?.subscriptionOrdersUsed ?? 4;
-  const ordersBarPercent = Math.min(100, Math.max(6, (usedOrders / maxOrders) * 100));
+  const ordersBarPercent = maxOrders > 0 ? Math.min(100, Math.max(6, (usedOrders / maxOrders) * 100)) : 0;
   const shopAcceptingOrders = Boolean(shop?.isOnline && shop?.agentOnline);
 
   return <div className={`shop-dashboard-shell${sidebarCollapsed ? " is-collapsed" : ""}${isDesktopAgent ? " is-desktop-agent" : " is-web-readonly"}`} style={{ gridTemplateColumns: sidebarCollapsed ? "72px minmax(0,1fr)" : "244px minmax(0,1fr)", transition: "grid-template-columns 0.2s ease" }}>
@@ -342,7 +342,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
               <span style={{ color: "rgba(255, 255, 255, 0.95)", fontWeight: 500 }}>Print orders</span>
               <span style={{ fontWeight: 700, color: "#ffffff", fontSize: 13 }}>
-                {usedOrders} / {maxOrders}
+                {usedOrders} / {maxOrders > 0 ? maxOrders : "Unlimited"}
               </span>
             </div>
             <div style={{ height: 4, borderRadius: 999, background: "rgba(255, 255, 255, 0.28)", overflow: "hidden" }}>
@@ -361,7 +361,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
       ) : (
         <a
           href="/dashboard/subscription"
-          title={`${planTitle} · ${daysLeft} days left · ${usedOrders}/${maxOrders} orders`}
+            title={`${planTitle} · ${daysLeft} days left · ${usedOrders}/${maxOrders > 0 ? maxOrders : "Unlimited"} orders`}
           style={{
             marginTop: "auto",
             width: 44,

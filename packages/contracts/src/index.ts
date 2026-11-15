@@ -17,6 +17,15 @@ export const printOrderStatuses = [
 export const paymentMethods = ["upi", "cash", "razorpay"] as const;
 export const paymentStatuses = ["unverified", "awaiting_cash", "paid"] as const;
 
+// Shared source of truth for the subscription amount shown in the client and
+// charged by the API. Amounts are in paise, as required by Razorpay Orders.
+export const subscriptionPricing = {
+  starter: {
+    monthlyPricePaise: 5_000,
+    annualPricePaise: 50_000,
+  },
+} as const;
+
 export const paperSizeSchema = z.enum(paperSizes);
 export const printOrderStatusSchema = z.enum(printOrderStatuses);
 export const printOptionsSchema = z.object({

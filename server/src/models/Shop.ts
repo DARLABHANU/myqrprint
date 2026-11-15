@@ -52,9 +52,10 @@ const shopSchema = new Schema(
     collectCustomerMobile: { type: Boolean, default: false },
     fileRetentionHours: { type: Number, default: 24, min: 0.25, max: 720 },
     subscriptionPlan: { type: String, enum: ["demo", "starter", "pro", "premium"], default: "demo" },
+    subscriptionBillingCycle: { type: String, enum: ["monthly", "annual"] },
     subscriptionStartedAt: { type: Date, default: Date.now },
     subscriptionExpiresAt: { type: Date, default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-    subscriptionOrderLimit: { type: Number, default: 50, min: 1 },
+    subscriptionOrderLimit: { type: Number, default: 50, min: 0 },
     subscriptionOrdersUsed: { type: Number, default: 0, min: 0 },
     enabledPaperSizes: {
       type: [{ type: String, enum: ["A3", "A4", "A5", "Legal"] }],

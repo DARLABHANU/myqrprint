@@ -5,18 +5,16 @@ import {
   Check,
   CheckCircle2,
   Clock3,
-  Copy,
   CreditCard,
   Crown,
   RefreshCw,
   ShieldCheck,
   X,
-  XCircle,
   Zap,
 } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import { subscriptionPricing } from "@printly/contracts";
 
-type SubscriptionPlanId = "demo" | "starter" | "pro" | "premium";
+type SubscriptionPlanId = "demo" | "starter";
 type BillingCycle = "monthly" | "annual";
 
 type PlanConfig = {
@@ -44,7 +42,7 @@ type SubscriptionState = {
   usagePercentage: number;
 };
 
-type SubscriptionRequestItem = {
+type LegacySubscriptionRequestItem = {
   _id: string;
   plan: SubscriptionPlanId;
   billingCycle: BillingCycle;
@@ -57,27 +55,87 @@ type SubscriptionRequestItem = {
   ownerId?: { ownerName?: string; email?: string; mobile?: string };
 };
 
+type RazorpayCheckoutOptions = {
+  key: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  prefill?: { name?: string; email?: string; contact?: string };
+  theme?: { color?: string };
+  handler: (result: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => void;
+  modal?: { ondismiss?: () => void };
+};
+
+type RazorpayCheckoutInstance = { open: () => void; on: (event: string, callback: (detail: { error?: { description?: string } }) => void) => void };
+type RazorpayCheckoutConstructor = new (options: RazorpayCheckoutOptions) => RazorpayCheckoutInstance;
+declare global { interface Window { Razorpay?: RazorpayCheckoutConstructor } }
+
+async function loadSubscriptionCheckout() {
+  if (!window.Razorpay) {
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Razorpay checkout could not load."));
+      document.head.appendChild(script);
+    });
+  }
+  if (!window.Razorpay) throw new Error("Razorpay checkout is not available in this browser.");
+  return window.Razorpay;
+}
+
+type SubscriptionPaymentItem = {
+  _id: string;
+  billingCycle: BillingCycle;
+  amountPaise: number;
+  status: "pending" | "activating" | "paid" | "failed";
+  paymentMode: "test" | "live";
+  razorpayPaymentId?: string;
+  createdAt: string;
+  expiresAt?: string;
+};
+
 const formatRupees = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN")}`;
+
+const subscriptionPlans: Record<SubscriptionPlanId, PlanConfig> = {
+  demo: {
+    id: "demo",
+    name: "Free Trial",
+    monthlyPricePaise: 0,
+    annualPricePaise: 0,
+    orderLimit: 50,
+    description: "7-day trial for up to 50 print orders",
+    features: ["Up to 50 print orders", "7 days validity"],
+  },
+  starter: {
+    id: "starter",
+    name: "UrQrPrint Subscription",
+    ...subscriptionPricing.starter,
+    orderLimit: 0,
+    description: "Full access for the selected billing period",
+    features: [
+      "Unlimited customer print orders",
+      "Printer routing and auto-print controls",
+      "Shop dashboard, reports, and QR page",
+      "Secure Razorpay checkout",
+      "Manual renewal; no automatic charge",
+    ],
+  },
+};
 
 export function SubscriptionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
-  const [pendingRequest, setPendingRequest] = useState<SubscriptionRequestItem | null>(null);
-  const [history, setHistory] = useState<SubscriptionRequestItem[]>([]);
-  const [plans, setPlans] = useState<Record<SubscriptionPlanId, PlanConfig> | null>(null);
-  const [platformPayment, setPlatformPayment] = useState<{ upiId: string; accountName: string }>({
-    upiId: "daarlabhanumurthy@okaxis",
-    accountName: "UrQrPrint Platform",
-  });
-
+  const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentItem[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlanId>("pro");
+  const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlanId>("starter");
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
-  const [utrInput, setUtrInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [copiedUpi, setCopiedUpi] = useState(false);
+  const paidPlanActive = Boolean(subscription && subscription.plan !== "demo" && !subscription.isExpired);
 
   async function loadData() {
     setLoading(true);
@@ -91,10 +149,7 @@ export function SubscriptionPage() {
       if (!response.ok) throw new Error("Could not load subscription details.");
       const data = await response.json();
       setSubscription(data.subscription);
-      setPendingRequest(data.pendingRequest);
-      setHistory(data.history ?? []);
-      setPlans(data.availablePlans);
-      if (data.platformPayment) setPlatformPayment(data.platformPayment);
+      setSubscriptionPayments(data.subscriptionPayments ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load subscription.");
     } finally {
@@ -107,76 +162,93 @@ export function SubscriptionPage() {
   }, []);
 
   const selectedPlan = useMemo(() => {
-    if (!plans) return null;
-    return plans[selectedPlanId] ?? plans.pro;
-  }, [plans, selectedPlanId]);
+    return subscriptionPlans[selectedPlanId] ?? subscriptionPlans.starter;
+  }, [selectedPlanId]);
 
   const payableAmountPaise = useMemo(() => {
     if (!selectedPlan) return 0;
     return billingCycle === "annual" ? selectedPlan.annualPricePaise : selectedPlan.monthlyPricePaise;
   }, [selectedPlan, billingCycle]);
 
-  const upiIntentUri = useMemo(() => {
-    const amount = (payableAmountPaise / 100).toFixed(2);
-    const pa = encodeURIComponent(platformPayment.upiId);
-    const pn = encodeURIComponent(platformPayment.accountName);
-    const tn = encodeURIComponent(`UrQrPrint ${selectedPlan?.name ?? ""} Plan`);
-    return `upi://pay?pa=${pa}&pn=${pn}&am=${amount}&cu=INR&tn=${tn}`;
-  }, [platformPayment, payableAmountPaise, selectedPlan]);
-
-  async function handleSubmitRequest(event: React.FormEvent) {
-    event.preventDefault();
-    if (!utrInput.trim() || utrInput.trim().length < 6) {
-      setError("Please enter a valid 12-digit UPI Reference / UTR Number from your payment receipt.");
-      return;
-    }
+  async function startSubscriptionCheckout() {
     setSubmitting(true);
     setError("");
     setSuccess("");
     try {
-      const response = await fetch("/api/shops/subscription/request", {
+      const response = await fetch("/api/shops/subscription/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({
-          plan: selectedPlanId,
-          billingCycle,
-          utr: utrInput.trim(),
-        }),
+        body: JSON.stringify({ billingCycle }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to submit subscription request.");
-      setSuccess("Subscription payment submitted! We will verify the UTR and activate your plan shortly.");
-      setModalOpen(false);
-      setUtrInput("");
-      await loadData();
+      const data = await response.json().catch(() => ({} as { error?: string; checkout?: { amount?: number; currency?: string; orderId?: string } }));
+      if (!response.ok) throw new Error(data.error || "Could not start subscription checkout.");
+      if (!data.checkout?.orderId || !data.checkout.keyId || !data.checkout.currency || data.checkout.amount !== payableAmountPaise) {
+        throw new Error("Subscription pricing has not updated on the payment server yet. Checkout was stopped to prevent charging the wrong amount.");
+      }
+      const Razorpay = await loadSubscriptionCheckout();
+      const pollForPayment = () => {
+        const startedAt = Date.now();
+        const poll = async () => {
+          if (Date.now() - startedAt > 2 * 60 * 1000) return;
+          try {
+            const statusResponse = await fetch(`/api/shops/subscription/payments/${encodeURIComponent(data.checkout.orderId)}`, { credentials: "same-origin" });
+            if (statusResponse.ok) {
+              const status = await statusResponse.json();
+              if (status.status === "paid") {
+                setSuccess(`Payment confirmed. Your plan is active until ${status.expiresAt ? new Date(status.expiresAt).toLocaleDateString("en-IN") : "the displayed expiry date"}.`);
+                setModalOpen(false);
+                setSubmitting(false);
+                await loadData();
+                return;
+              }
+            }
+          } catch { /* Retry status check while webhook delivery completes. */ }
+          if (Date.now() - startedAt < 2 * 60 * 1000) window.setTimeout(() => void poll(), 3000);
+        };
+        window.setTimeout(() => void poll(), 3000);
+      };
+      const checkout = new Razorpay({
+        key: data.checkout.keyId,
+        order_id: data.checkout.orderId,
+        amount: data.checkout.amount,
+        currency: data.checkout.currency,
+        name: data.checkout.name,
+        description: data.checkout.description,
+        prefill: data.checkout.prefill,
+        theme: { color: "#079d72" },
+        handler: (result) => { void (async () => {
+          try {
+            const verifyResponse = await fetch("/api/shops/subscription/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify(result),
+            });
+            const verifyData = await verifyResponse.json();
+            if (!verifyResponse.ok) throw new Error(verifyData.error || "Payment verification is pending.");
+            setSuccess(`Payment confirmed. Your plan is active until ${new Date(verifyData.expiresAt).toLocaleDateString("en-IN")}.`);
+            setModalOpen(false);
+            await loadData();
+          } catch (verifyError) {
+            setError(verifyError instanceof Error ? verifyError.message : "Could not verify subscription payment.");
+          } finally {
+            setSubmitting(false);
+          }
+        })(); },
+        modal: { ondismiss: () => { setSubmitting(false); pollForPayment(); } },
+      });
+      checkout.on("payment.failed", (detail) => {
+        setError(detail.error?.description || "Subscription payment failed. No plan change was made.");
+        setSubmitting(false);
+      });
+      checkout.open();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed.");
-    } finally {
       setSubmitting(false);
+    } finally {
+      // Keep the submit state while the hosted checkout is open.
     }
-  }
-
-  async function handleCancelRequest() {
-    if (!window.confirm("Cancel this pending subscription verification request?")) return;
-    try {
-      const response = await fetch("/api/shops/subscription/cancel-request", {
-        method: "POST",
-        credentials: "same-origin",
-      });
-      if (!response.ok) throw new Error("Could not cancel request.");
-      setSuccess("Pending request cancelled.");
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not cancel request.");
-    }
-  }
-
-  function copyUpiId() {
-    navigator.clipboard.writeText(platformPayment.upiId).then(() => {
-      setCopiedUpi(true);
-      setTimeout(() => setCopiedUpi(false), 2500);
-    }).catch(() => {});
   }
 
   return (
@@ -185,15 +257,15 @@ export function SubscriptionPage() {
         <header className="support-page-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
           <div>
             <h1>Shop Subscription & Plans</h1>
-            <p>Manage your UrQrPrint plan, view order quotas, and upgrade your shop capacity.</p>
+            <p>Start with 7 days and 50 print orders, then choose monthly or annual access.</p>
           </div>
           <button
             type="button"
             className="button button-dark"
-            onClick={() => setModalOpen(true)}
+            onClick={() => { setBillingCycle("monthly"); setSelectedPlanId("starter"); setModalOpen(true); }}
             style={{ padding: "10px 18px", gap: 8, fontSize: 13 }}
           >
-            <Crown size={16} /> Upgrade / Change Plan
+            <Crown size={16} /> {paidPlanActive ? "Renew / extend plan" : "Choose a paid plan"}
           </button>
         </header>
 
@@ -207,54 +279,6 @@ export function SubscriptionPage() {
           </div>
         ) : (
           <>
-            {/* Pending Request Alert */}
-            {pendingRequest && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  flexWrap: "wrap",
-                  gap: 12,
-                  padding: "16px 20px",
-                  borderRadius: 12,
-                  background: "#fffbf0",
-                  border: "1px solid #fce8b3",
-                  color: "#8a5806",
-                  marginBottom: 20,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <Clock3 size={24} style={{ color: "#c67d0a", flexShrink: 0 }} />
-                  <div>
-                    <b style={{ fontSize: 14 }}>Subscription Verification Pending</b>
-                    <p style={{ margin: "3px 0 0", fontSize: 12, color: "#6e4708" }}>
-                      We received your payment of <b>{formatRupees(pendingRequest.amountPaise)}</b> for the{" "}
-                      <b>{pendingRequest.plan.toUpperCase()}</b> ({pendingRequest.billingCycle}) plan (UTR:{" "}
-                      <code style={{ background: "#fef0c7", padding: "1px 6px", borderRadius: 4 }}>{pendingRequest.utr}</code>).
-                      Admin review usually takes 15–30 minutes.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCancelRequest}
-                  style={{
-                    border: "1px solid #d99a25",
-                    background: "#fff",
-                    color: "#8a5806",
-                    padding: "6px 14px",
-                    borderRadius: 7,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                >
-                  Cancel Request
-                </button>
-              </div>
-            )}
-
             {/* Current Plan Card */}
             {subscription && (
               <section
@@ -308,13 +332,12 @@ export function SubscriptionPage() {
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Order Capacity Used</div>
                     <b style={{ fontSize: 22, fontFamily: "Manrope, sans-serif", color: "#1e293b" }}>
-                      {subscription.ordersUsed} <span style={{ fontSize: 14, color: "#94a3b8" }}>/ {subscription.orderLimit >= 100000 ? "Unlimited" : subscription.orderLimit}</span>
+                      {subscription.ordersUsed} <span style={{ fontSize: 14, color: "#94a3b8" }}>/ {subscription.orderLimit <= 0 || subscription.orderLimit >= 100000 ? "Unlimited" : subscription.orderLimit}</span>
                     </b>
                   </div>
                 </div>
 
-                {/* Progress bar */}
-                <div style={{ marginTop: 20 }}>
+                {subscription.orderLimit > 0 && <div style={{ marginTop: 20 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", marginBottom: 6 }}>
                     <span>Monthly Quota Usage</span>
                     <span>{subscription.usagePercentage}% used ({subscription.ordersRemaining} orders remaining)</span>
@@ -330,7 +353,7 @@ export function SubscriptionPage() {
                       }}
                     />
                   </div>
-                </div>
+                </div>}
 
                 {subscription.isExpired && (
                   <div
@@ -358,12 +381,12 @@ export function SubscriptionPage() {
             <section style={{ marginBottom: 36 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14, marginBottom: 18 }}>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 750, fontFamily: "Manrope, sans-serif" }}>Available Subscription Tiers</h2>
-                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>Choose the plan that fits your walk-in print volume.</p>
+                  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 750, fontFamily: "Manrope, sans-serif" }}>Choose your subscription</h2>
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>Choose one month for ₹50 or 12 months for ₹500.</p>
                 </div>
 
                 {/* Monthly / Annual Toggle */}
-                <div style={{ display: "inline-flex", background: "#f1f5f9", padding: 3, borderRadius: 10, border: "1px solid #e2e8ef" }}>
+              <div style={{ display: "inline-flex", background: "#f1f5f9", padding: 3, borderRadius: 10, border: "1px solid #e2e8ef" }}>
                   <button
                     type="button"
                     onClick={() => setBillingCycle("monthly")}
@@ -399,19 +422,18 @@ export function SubscriptionPage() {
                       boxShadow: billingCycle === "annual" ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
                     }}
                   >
-                    <span>Annual</span>
+                    <span>12 months</span>
                     <span style={{ fontSize: 10, fontWeight: 700, background: "#dcfce7", color: "#15803d", padding: "1px 6px", borderRadius: 4 }}>
-                      Save ~17%
+                      Save ₹100
                     </span>
                   </button>
                 </div>
               </div>
 
-              {plans && (
+              {(
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
-                  {(["starter", "pro", "premium"] as const).map((planKey) => {
-                    const plan = plans[planKey];
-                    if (!plan) return null;
+                  {(["starter"] as const).map((planKey) => {
+                    const plan = subscriptionPlans[planKey];
                     const pricePaise = billingCycle === "annual" ? plan.annualPricePaise : plan.monthlyPricePaise;
                     const isCurrent = subscription?.plan === planKey && !subscription?.isExpired;
                     return (
@@ -428,38 +450,19 @@ export function SubscriptionPage() {
                           flexDirection: "column",
                         }}
                       >
-                        {plan.popular && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: -11,
-                              left: "50%",
-                              transform: "translateX(-50%)",
-                              background: "#0aa579",
-                              color: "#fff",
-                              fontSize: 10,
-                              fontWeight: 700,
-                              letterSpacing: 0.5,
-                              textTransform: "uppercase",
-                              padding: "2px 10px",
-                              borderRadius: 20,
-                            }}
-                          >
-                            Most Popular
-                          </div>
-                        )}
-                        <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 800, fontFamily: "Manrope, sans-serif" }}>{plan.name}</h3>
-                        <p style={{ margin: "0 0 16px", fontSize: 12, color: "#64748b", minHeight: 32 }}>{plan.description}</p>
+                        <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 800, fontFamily: "Manrope, sans-serif" }}>UrQrPrint subscription</h3>
+                        <p style={{ margin: "0 0 16px", fontSize: 12, color: "#64748b", minHeight: 32 }}>Full access to your shop for the selected billing period.</p>
 
                         <div style={{ marginBottom: 16 }}>
                           <span style={{ fontSize: 28, fontWeight: 800, fontFamily: "Manrope, sans-serif", color: "#078c68" }}>
                             {formatRupees(pricePaise)}
                           </span>
                           <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: 4 }}>
-                            {billingCycle === "annual" ? "/ year" : "/ month"}
+                            {billingCycle === "annual" ? "/ 12 months" : "/ 1 month"}
                           </span>
+                          {billingCycle === "annual" && <div style={{ fontSize: 11, color: "#15803d", marginTop: 4 }}>Save ₹100 compared with paying monthly</div>}
                           <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                            <b>{plan.orderLimit >= 100000 ? "Unlimited" : plan.orderLimit.toLocaleString("en-IN")}</b> customer orders / mo
+                            Unlimited customer print orders while active
                           </div>
                         </div>
 
@@ -490,7 +493,7 @@ export function SubscriptionPage() {
                             cursor: "pointer",
                           }}
                         >
-                          {isCurrent ? "Renew Current Plan" : `Select ${plan.name}`}
+                          {isCurrent ? "Extend current plan" : `Choose ${billingCycle === "annual" ? "12-month" : "monthly"} plan`}
                         </button>
                       </article>
                     );
@@ -499,68 +502,20 @@ export function SubscriptionPage() {
               )}
             </section>
 
-            {/* Request / Payment History Table */}
-            <section className="settings-card" style={{ padding: 0, borderRadius: 14, overflow: "hidden", border: "1px solid #e2e8ef", background: "#fff" }}>
+            <section className="settings-card" style={{ marginTop: 18, padding: 0, borderRadius: 14, overflow: "hidden", border: "1px solid #e2e8ef", background: "#fff" }}>
               <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9" }}>
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, fontFamily: "Manrope, sans-serif" }}>Subscription History</h3>
-                <p style={{ margin: "3px 0 0", fontSize: 11, color: "#64748b" }}>Past subscription upgrade requests and payment verification records.</p>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, fontFamily: "Manrope, sans-serif" }}>Razorpay subscription payments</h3>
+                <p style={{ margin: "3px 0 0", fontSize: 11, color: "#64748b" }}>Confirmed payments and selected plan terms.</p>
               </div>
-
-              {history.length === 0 ? (
-                <div style={{ padding: "30px 20px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                  No previous subscription payment requests on record.
+              {subscriptionPayments.length === 0 ? (
+                <div style={{ padding: "25px 20px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>No Razorpay subscription payments yet.</div>
+              ) : subscriptionPayments.map((payment) => (
+                <div key={payment._id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "13px 20px", borderBottom: "1px solid #f1f5f9", fontSize: 12 }}>
+                  <div><b>{payment.billingCycle === "annual" ? "12-month plan" : "Monthly plan"}</b><div style={{ color: "#64748b", marginTop: 3 }}>{new Date(payment.createdAt).toLocaleDateString("en-IN")} · {payment.paymentMode === "live" ? "Live payment" : "Test payment"}</div></div>
+                  <b>{formatRupees(payment.amountPaise)}</b>
+                  <span style={{ color: payment.status === "paid" ? "#15803d" : payment.status === "failed" ? "#b91c1c" : "#b45309", fontWeight: 700 }}>{payment.status === "paid" ? `Active until ${payment.expiresAt ? new Date(payment.expiresAt).toLocaleDateString("en-IN") : "confirmed"}` : payment.status === "failed" ? "Payment failed · no plan change" : payment.status === "activating" ? "Confirming payment…" : "Payment pending"}</span>
                 </div>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, textAlign: "left" }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc", color: "#64748b", borderBottom: "1px solid #e2e8ef" }}>
-                        <th style={{ padding: "10px 18px", fontWeight: 600 }}>Date</th>
-                        <th style={{ padding: "10px 18px", fontWeight: 600 }}>Plan</th>
-                        <th style={{ padding: "10px 18px", fontWeight: 600 }}>Cycle</th>
-                        <th style={{ padding: "10px 18px", fontWeight: 600 }}>Amount</th>
-                        <th style={{ padding: "10px 18px", fontWeight: 600 }}>UTR / Ref No.</th>
-                        <th style={{ padding: "10px 18px", fontWeight: 600 }}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.map((item) => (
-                        <tr key={item._id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                          <td style={{ padding: "12px 18px", color: "#64748b" }}>
-                            {new Date(item.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })}
-                          </td>
-                          <td style={{ padding: "12px 18px", fontWeight: 600 }}>{item.plan.toUpperCase()}</td>
-                          <td style={{ padding: "12px 18px", textTransform: "capitalize", color: "#64748b" }}>{item.billingCycle}</td>
-                          <td style={{ padding: "12px 18px", fontWeight: 600 }}>{formatRupees(item.amountPaise)}</td>
-                          <td style={{ padding: "12px 18px" }}>
-                            <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: 4, fontSize: 11 }}>{item.utr}</code>
-                          </td>
-                          <td style={{ padding: "12px 18px" }}>
-                            {item.status === "approved" && (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#15803d", fontWeight: 600, fontSize: 11 }}>
-                                <CheckCircle2 size={13} /> Approved
-                              </span>
-                            )}
-                            {item.status === "pending" && (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#b45309", fontWeight: 600, fontSize: 11 }}>
-                                <Clock3 size={13} /> Pending
-                              </span>
-                            )}
-                            {item.status === "rejected" && (
-                              <span
-                                title={item.rejectionReason}
-                                style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#b91c1c", fontWeight: 600, fontSize: 11 }}
-                              >
-                                <XCircle size={13} /> Rejected {item.rejectionReason && `(${item.rejectionReason})`}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              ))}
             </section>
           </>
         )}
@@ -577,106 +532,34 @@ export function SubscriptionPage() {
             >
               <header>
                 <div>
-                  <h2>Upgrade to {selectedPlan.name} Plan</h2>
-                  <p>Complete payment using any UPI app and enter the UTR reference number below.</p>
+                  <h2>Choose your UrQrPrint subscription</h2>
+                  <p>Secure checkout through Razorpay. Your plan activates after payment is confirmed.</p>
                 </div>
                 <button type="button" className="subscription-modal-close" onClick={() => setModalOpen(false)}>
                   <X size={18} />
                 </button>
               </header>
 
-              <div className="subscription-plan-dialog-body" style={{ gridTemplateColumns: "1.1fr 0.9fr" }}>
-                {/* Left: UPI QR Code & Instructions */}
-                <div style={{ padding: 18, background: "#fff", borderRadius: 12, border: "1px solid #e2e8ef" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, color: "#64748b" }}>
-                      Scan & Pay with UPI
-                    </span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "#078c68" }}>
+              <div className="subscription-plan-dialog-body" style={{ gridTemplateColumns: "1fr" }}>
+                <div className="subscription-checkout-panel" style={{ width: "100%" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div>
+                      <h3 style={{ fontSize: 18 }}>{selectedPlan.name} · {billingCycle === "annual" ? "12 months" : "1 month"}</h3>
+                      <p style={{ marginTop: 8 }}>Unlimited customer print orders while your plan is active. Secure payment is processed by Razorpay.</p>
+                    </div>
+                    <div style={{ textAlign: "right", color: "#078c68", fontSize: 26, fontWeight: 800 }}>
                       {formatRupees(payableAmountPaise)}
-                    </span>
+                      <small style={{ display: "block", color: "#64748b", fontSize: 11, fontWeight: 500 }}>{billingCycle === "annual" ? "₹100 less than 12 monthly payments" : "billed monthly"}</small>
+                    </div>
                   </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 0", background: "#f8fafc", borderRadius: 10, border: "1px dashed #cbd5e1" }}>
-                    <div style={{ padding: 10, background: "#fff", borderRadius: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-                      <QRCodeSVG value={upiIntentUri} size={168} level="M" />
-                    </div>
-                    <small style={{ marginTop: 10, fontSize: 11, color: "#64748b" }}>Scan with GPay, PhonePe, Paytm, or BHIM</small>
+                  <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+                    <button type="button" className="button" onClick={() => setBillingCycle("monthly")} aria-pressed={billingCycle === "monthly"} style={{ border: "1px solid #cbd5e1", background: billingCycle === "monthly" ? "#e8f8f1" : "white", color: "#183b31" }}>₹50 · Monthly</button>
+                    <button type="button" className="button" onClick={() => setBillingCycle("annual")} aria-pressed={billingCycle === "annual"} style={{ border: "1px solid #cbd5e1", background: billingCycle === "annual" ? "#e8f8f1" : "white", color: "#183b31" }}>₹500 · 12 months · Save ₹100</button>
                   </div>
-
-                  <div style={{ marginTop: 16 }}>
-                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>Platform UPI ID</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f1f5f9", borderRadius: 7, border: "1px solid #e2e8ef" }}>
-                      <code style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", flex: 1 }}>{platformPayment.upiId}</code>
-                      <button
-                        type="button"
-                        onClick={copyUpiId}
-                        style={{ border: 0, background: "transparent", color: "#078c68", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600 }}
-                      >
-                        <Copy size={13} /> {copiedUpi ? "Copied!" : "Copy"}
-                      </button>
-                    </div>
-                    <small style={{ display: "block", marginTop: 4, fontSize: 10, color: "#94a3b8" }}>
-                      Account Name: <b>{platformPayment.accountName}</b>
-                    </small>
-                  </div>
-                </div>
-
-                {/* Right: UTR Form */}
-                <div className="subscription-checkout-panel" style={{ alignSelf: "stretch" }}>
-                  <h3 style={{ fontSize: 16 }}>Confirm Your Payment</h3>
-                  <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 16px" }}>
-                    Once you transfer <b>{formatRupees(payableAmountPaise)}</b> via UPI, enter the 12-digit transaction UTR / Reference number from your banking or UPI app.
-                  </p>
-
-                  <form onSubmit={handleSubmitRequest}>
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#334155", marginBottom: 6 }}>
-                        Selected Tier & Billing Cycle
-                      </label>
-                      <div style={{ padding: "8px 12px", background: "#f8fafc", borderRadius: 7, border: "1px solid #e2e8ef", fontSize: 12 }}>
-                        <b>{selectedPlan.name}</b> · {billingCycle === "annual" ? "Annual (365 days)" : "Monthly (30 days)"} · <b>{formatRupees(payableAmountPaise)}</b>
-                      </div>
-                    </div>
-
-                    <div style={{ marginBottom: 16 }}>
-                      <label htmlFor="utrInput" style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#334155", marginBottom: 6 }}>
-                        UPI Reference / UTR Number <span style={{ color: "#ef4444" }}>*</span>
-                      </label>
-                      <input
-                        id="utrInput"
-                        type="text"
-                        required
-                        placeholder="e.g. 412389123456"
-                        value={utrInput}
-                        onChange={(e) => setUtrInput(e.target.value)}
-                        style={{
-                          width: "100%",
-                          height: 38,
-                          padding: "0 10px",
-                          borderRadius: 7,
-                          border: "1px solid #cbd5e1",
-                          fontSize: 13,
-                          fontFamily: "monospace",
-                        }}
-                      />
-                      <small style={{ display: "block", marginTop: 4, fontSize: 10, color: "#94a3b8" }}>
-                        Found in your GPay / PhonePe payment receipt under "UPI transaction ID" or "UTR".
-                      </small>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="button button-dark"
-                      style={{ width: "100%", height: 40, fontSize: 13, gap: 8 }}
-                    >
-                      {submitting ? "Submitting..." : "Submit for Verification"} <ArrowRight size={15} />
-                    </button>
-                    <small style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 10, color: "#94a3b8" }}>
-                      Admin verification takes 15–30 minutes during business hours.
-                    </small>
-                  </form>
+                  <button type="button" disabled={submitting} className="button button-dark" onClick={() => void startSubscriptionCheckout()} style={{ width: "100%", height: 44, marginTop: 18, fontSize: 14, gap: 8 }}>
+                    {submitting ? "Opening secure checkout…" : `Pay ${formatRupees(payableAmountPaise)} with Razorpay`} <ArrowRight size={15} />
+                  </button>
+                  <small style={{ display: "block", textAlign: "center", marginTop: 10 }}>This is a one-time payment for the selected term. Renewal is manual; your plan will not auto-charge.</small>
                 </div>
               </div>
             </div>
@@ -691,8 +574,8 @@ export function AdminSubscriptionReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [pending, setPending] = useState<SubscriptionRequestItem[]>([]);
-  const [recent, setRecent] = useState<SubscriptionRequestItem[]>([]);
+  const [pending, setPending] = useState<LegacySubscriptionRequestItem[]>([]);
+  const [recent, setRecent] = useState<LegacySubscriptionRequestItem[]>([]);
   const [stats, setStats] = useState({
     pendingCount: 0,
     totalShops: 0,
@@ -704,7 +587,7 @@ export function AdminSubscriptionReviewPage() {
   // Manual Override Modal
   const [overrideModal, setOverrideModal] = useState(false);
   const [overrideSlug, setOverrideSlug] = useState("");
-  const [overridePlan, setOverridePlan] = useState<SubscriptionPlanId>("pro");
+  const [overridePlan, setOverridePlan] = useState<SubscriptionPlanId>("starter");
   const [overrideDays, setOverrideDays] = useState(30);
 
   async function loadAdminData() {
@@ -1080,9 +963,7 @@ export function AdminSubscriptionReviewPage() {
                     style={{ width: "100%", height: 38, padding: "0 10px", borderRadius: 7, border: "1px solid #cbd5e1" }}
                   >
                     <option value="demo">Demo / Free Trial</option>
-                    <option value="starter">Starter (300 orders/mo)</option>
-                    <option value="pro">Professional (1,500 orders/mo)</option>
-                    <option value="premium">Enterprise (Unlimited)</option>
+                    <option value="starter">UrQrPrint (Unlimited)</option>
                   </select>
                 </div>
 

@@ -171,6 +171,9 @@ export async function markRazorpayPaymentCaptured(input: {
         : `Razorpay payment ${input.paymentId} was verified as captured.`,
     });
     await order.save();
+    if (!latePayment) {
+      await Shop.updateOne({ _id: order.shopId }, { $inc: { subscriptionOrdersUsed: 1 } });
+    }
   } else if (order.razorpayPaymentId && order.razorpayPaymentId !== input.paymentId) {
     console.error("Rejected a second Razorpay payment for already-paid UrQrPrint order", order.publicCode);
     return { found: true as const, matched: false as const };

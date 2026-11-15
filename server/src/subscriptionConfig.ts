@@ -1,4 +1,6 @@
-export type SubscriptionPlanId = "demo" | "starter" | "pro" | "premium";
+import { subscriptionPricing } from "@printly/contracts";
+
+export type SubscriptionPlanId = "demo" | "starter";
 export type BillingCycle = "monthly" | "annual";
 
 export interface PlanConfig {
@@ -25,59 +27,23 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, PlanConfig> = {
     features: [
       "Up to 50 customer orders",
       "Standard A4 & basic print sizes",
-      "Direct UPI & counter cash payments",
+      "Razorpay checkout & counter cash payments",
       "Printable shop QR poster maker",
       "7 days validity",
     ],
   },
   starter: {
     id: "starter",
-    name: "Starter",
-    monthlyPricePaise: 19900, // ₹199/month
-    annualPricePaise: 199900, // ₹1,999/year (save ~16%)
-    orderLimit: 300,
-    description: "Essential tools for neighborhood photocopy & xerox shops",
+    name: "UrQrPrint Subscription",
+    ...subscriptionPricing.starter,
+    orderLimit: 0,
+    description: "Full shop access, billed monthly or yearly",
     features: [
-      "Up to 300 orders per month",
-      "All paper sizes (A4, A3, A5, Legal)",
-      "Daily email activity summaries",
-      "Bulk discount tier rules",
-      "Standard email support",
-    ],
-  },
-  pro: {
-    id: "pro",
-    name: "Professional",
-    badge: "Most Popular",
-    popular: true,
-    monthlyPricePaise: 49900, // ₹499/month
-    annualPricePaise: 499900, // ₹4,999/year (save ~17%)
-    orderLimit: 1500,
-    description: "Designed for busy cyber cafes & commercial copy centers",
-    features: [
-      "Up to 1,500 orders per month",
-      "Custom shop logo on QR posters",
-      "Advanced revenue & job reports with CSV export",
-      "Location-lock security controls",
-      "Priority customer upload processing",
-      "WhatsApp & priority email support",
-    ],
-  },
-  premium: {
-    id: "premium",
-    name: "Enterprise",
-    badge: "Unlimited",
-    monthlyPricePaise: 99900, // ₹999/month
-    annualPricePaise: 999900, // ₹9,999/year (save ~17%)
-    orderLimit: 100000, // Unlimited
-    description: "High-volume college campus hubs & print chains",
-    features: [
-      "Unlimited customer orders",
-      "Everything in Professional",
-      "Custom branding & priority queueing",
-      "Multi-format photo & passport layouts",
-      "Dedicated account manager",
-      "Zero quota interruption",
+      "Unlimited customer print orders",
+      "Automatic print job routing",
+      "Shop dashboard and reports",
+      "All enabled print options",
+      "Email support",
     ],
   },
 };

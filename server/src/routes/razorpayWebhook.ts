@@ -1,6 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { z } from "zod";
 import { markRazorpayPaymentCaptured, verifyWebhookSignature } from "../services/razorpay.js";
+import { activateCapturedSubscription } from "../services/subscriptions.js";
+import { SubscriptionPayment } from "../models/SubscriptionPayment.js";
 
 export const razorpayWebhookRouter = Router();
 
@@ -37,6 +39,15 @@ razorpayWebhookRouter.post("/", async (request: Request, response: Response, nex
       return;
     }
     if (parsed.data.event !== "payment.captured") {
+      if (parsed.data.event === "payment.failed") {
+        const failedPayment = parsed.data.payload?.payment?.entity;
+        if (failedPayment?.order_id) {
+          await SubscriptionPayment.updateOne(
+            { razorpayOrderId: failedPayment.order_id, status: "pending" },
+            { $set: { status: "failed" } },
+          );
+        }
+      }
       response.status(200).json({ received: true });
       return;
     }
@@ -51,11 +62,24 @@ razorpayWebhookRouter.post("/", async (request: Request, response: Response, nex
       amount: payment.amount,
       currency: payment.currency,
     });
+    const subscriptionResult = await activateCapturedSubscription({
+      orderId: payment.order_id,
+      paymentId: payment.id,
+      amount: payment.amount,
+      currency: payment.currency,
+    });
+    if (subscriptionResult.found) {
+      if (!subscriptionResult.matched) {
+        response.status(400).json({ error: "Razorpay payment did not match the subscription." });
+        return;
+      }
+      response.status(200).json({ received: true });
+      return;
+    }
     if (result.found && !result.matched) {
       response.status(400).json({ error: "Razorpay payment did not match the print order." });
       return;
     }
-    if (!result.found) console.warn("Razorpay captured webhook did not match a UrQrPrint order.", payment.order_id);
     response.status(200).json({ received: true });
   } catch (error) {
     if (error instanceof SyntaxError) {

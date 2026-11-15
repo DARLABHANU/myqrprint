@@ -94,8 +94,8 @@ const faqGroups = [
   {
     name: "Pricing & plans",
     questions: [
-      ["What shop subscriptions are available?", "UrQrPrint offers a 7-day Free Trial (up to 50 orders), Starter (₹199/mo, 300 orders), Professional (₹499/mo, 1,500 orders), and Enterprise (₹999/mo, unlimited orders)."],
-      ["How do I pay for my shop subscription?", "You can pay via any UPI app (GPay, PhonePe, Paytm, BHIM) by scanning our platform UPI QR code, then submit the 12-digit UTR in your shop dashboard for quick verification."],
+      ["What shop subscriptions are available?", "Every new shop gets a 7-day trial with up to 50 print orders. Then choose ₹50 for one month or ₹500 for 12 months (₹100 less than paying monthly). Paid plans include unlimited print orders."],
+      ["How do I pay for my shop subscription?", "Pay securely through Razorpay in My subscription. The plan activates only after Razorpay confirms the payment. Plans are one-time payments for the selected term and do not auto-renew."],
       ["How do customer print payments work?", "When enabled, online orders use Razorpay checkout on UrQrPrint. Cash orders are collected by the shop at the counter. Shop settlements are tracked separately; see the Terms and Refund Policy for details."],
     ],
   },
@@ -327,12 +327,12 @@ const pageContent: Record<string, MarketingPage> = {
   },
   "/pricing": {
     title: "Simple, transparent plans for local print shops",
-    intro: "Start with a 7-day free trial. Pick a plan that fits your shop's walk-in order volume.",
+    intro: "Start with a 7-day free trial, then choose a monthly or annual plan.",
     category: "features",
     sections: [
       { title: "Free 7-day evaluation", body: "Every new shop begins with a 7-day free trial with up to 50 customer orders. No credit card required." },
       { title: "Online and counter payments", body: "Customers can pay with Razorpay checkout when enabled or pay cash at the counter. Razorpay collections are settled to shops separately; see the Terms and Refund Policy for details." },
-      { title: "Upgrade anytime", body: "Move to Starter, Professional, or Enterprise as your order volume grows, with simple UPI-based subscription activation." },
+      { title: "Straightforward pricing", body: "After the trial, pay ₹50 for one month or ₹500 for 12 months. Annual billing saves ₹100 compared with twelve monthly payments. Paid plans include unlimited orders and renew manually." },
     ],
   },
   "/faq": {
@@ -602,7 +602,7 @@ export function PublicMarketingPages({ path }: { path: string }) {
                 <span className="public-note-icon"><QrCode size={20} /></span>
                 <small>ONE SIMPLE FLOW</small>
                 <strong>Scan. Send.<br />Track the order.</strong>
-                <p>Printer automation is paused. Shops can still review orders and manage manual fulfillment.</p>
+                <p>The shop’s online agent sends verified paid orders to its configured printer according to the shop’s auto-print setting.</p>
               </aside>
             </section>
 
@@ -610,69 +610,68 @@ export function PublicMarketingPages({ path }: { path: string }) {
               <section className="public-pricing-content" style={{ display: "grid", gridTemplateColumns: "1fr", gap: 36, padding: "50px max(8%, calc((100% - 1070px) / 2))" }}>
                 <div className="public-section-intro" style={{ maxWidth: 650, margin: "0 auto", textAlign: "center" }}>
                   <div className="public-eyebrow" style={{ justifyContent: "center" }}><span /> PLANS FOR EVERY PRINT SHOP</div>
-                  <h2>Zero commission.<br /><span>Simple monthly pricing.</span></h2>
-                  <p>Customer payments go straight to your shop. Pick a plan based on your monthly order volume.</p>
+                  <h2>Simple plans.<br /><span>One monthly or annual price.</span></h2>
+                  <p>Online print orders are collected through Razorpay and settled to shops separately. Cash orders are collected at the counter.</p>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 20 }}>
                   <article className="public-pricing-card" style={{ display: "flex", flexDirection: "column" }}>
                     <div className="public-plan-top">
-                      <span>FOR LOCAL XEROX SHOPS</span>
-                      <span className="public-plan-badge">STARTER</span>
+                      <span>NEW SHOP</span>
+                      <span className="public-plan-badge">FREE TRIAL</span>
                     </div>
-                    <h3>Starter</h3>
-                    <p>Essential digital tools for neighborhood photocopy shops.</p>
+                    <h3>7-day trial</h3>
+                    <p>Try the full shop workflow before choosing a paid term.</p>
                     <div style={{ margin: "14px 0", fontSize: 28, fontWeight: 800, color: "#078c68", fontFamily: "Manrope, sans-serif" }}>
-                      ₹199 <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ month</small>
+                      Free <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ 7 days</small>
                     </div>
                     <ul style={{ flex: 1 }}>
-                      <li><Check size={15} /> <b>Up to 300 orders</b> / month</li>
-                      <li><Check size={15} /> All paper sizes (A4, A3, A5, Legal)</li>
-                      <li><Check size={15} /> Direct UPI & cash payments</li>
-                      <li><Check size={15} /> Daily email business summary</li>
-                      <li><Check size={15} /> Standard email support</li>
+                      <li><Check size={15} /> <b>Up to 50 print orders</b></li>
+                      <li><Check size={15} /> Connect the desktop agent and printers</li>
+                      <li><Check size={15} /> Test customer QR ordering</li>
+                      <li><Check size={15} /> No subscription payment required</li>
                     </ul>
                     <a className="button button-dark" href="/register" style={{ marginTop: 20 }}>Get started free</a>
                   </article>
 
                   <article className="public-pricing-card" style={{ display: "flex", flexDirection: "column", border: "2px solid #0aa579", position: "relative" }}>
                     <div className="public-plan-top">
-                      <span style={{ color: "#0aa579" }}>POPULAR CHOICE</span>
-                      <span className="public-plan-badge" style={{ background: "#dcfce7", color: "#15803d" }}>MOST POPULAR</span>
+                      <span style={{ color: "#0aa579" }}>FLEXIBLE TERM</span>
+                      <span className="public-plan-badge" style={{ background: "#dcfce7", color: "#15803d" }}>MONTHLY</span>
                     </div>
-                    <h3>Professional</h3>
-                    <p>Built for busy cyber cafes and commercial document centers.</p>
+                    <h3>Monthly plan</h3>
+                    <p>Full access for one month. Renew when you are ready.</p>
                     <div style={{ margin: "14px 0", fontSize: 28, fontWeight: 800, color: "#078c68", fontFamily: "Manrope, sans-serif" }}>
-                      ₹499 <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ month</small>
+                      ₹50 <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ month</small>
                     </div>
                     <ul style={{ flex: 1 }}>
-                      <li><Check size={15} /> <b>Up to 1,500 orders</b> / month</li>
-                      <li><Check size={15} /> Custom shop logo on QR poster</li>
-                      <li><Check size={15} /> Location-lock proximity protection</li>
-                      <li><Check size={15} /> Advanced analytics & CSV export</li>
-                      <li><Check size={15} /> WhatsApp & priority email support</li>
+                      <li><Check size={15} /> Unlimited customer print orders</li>
+                      <li><Check size={15} /> Printer routing and auto-print controls</li>
+                      <li><Check size={15} /> Shop dashboard, reports, and QR page</li>
+                      <li><Check size={15} /> Secure Razorpay checkout</li>
+                      <li><Check size={15} /> Manual renewal; no automatic charge</li>
                     </ul>
                     <a className="button button-dark" href="/register" style={{ marginTop: 20, background: "#0aa579" }}>Start 7-day trial</a>
                   </article>
 
                   <article className="public-pricing-card" style={{ display: "flex", flexDirection: "column" }}>
                     <div className="public-plan-top">
-                      <span>CAMPUS & LARGE HUBS</span>
-                      <span className="public-plan-badge">ENTERPRISE</span>
+                      <span>BEST VALUE</span>
+                      <span className="public-plan-badge">ANNUAL</span>
                     </div>
-                    <h3>Enterprise</h3>
-                    <p>For high-volume college libraries and multi-counter copy hubs.</p>
+                    <h3>12-month plan</h3>
+                    <p>Pay once for a full year and save ₹100.</p>
                     <div style={{ margin: "14px 0", fontSize: 28, fontWeight: 800, color: "#078c68", fontFamily: "Manrope, sans-serif" }}>
-                      ₹999 <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ month</small>
+                      ₹500 <small style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>/ year</small>
                     </div>
                     <ul style={{ flex: 1 }}>
-                      <li><Check size={15} /> <b>Unlimited customer orders</b></li>
-                      <li><Check size={15} /> Everything in Professional</li>
-                      <li><Check size={15} /> Zero order quota interruption</li>
-                      <li><Check size={15} /> Photo layouts & passport photo sheets</li>
-                      <li><Check size={15} /> Dedicated account manager</li>
+                      <li><Check size={15} /> Unlimited customer print orders</li>
+                      <li><Check size={15} /> Printer routing and auto-print controls</li>
+                      <li><Check size={15} /> Shop dashboard, reports, and QR page</li>
+                      <li><Check size={15} /> ₹100 less than twelve monthly payments</li>
+                      <li><Check size={15} /> Manual renewal; no automatic charge</li>
                     </ul>
-                    <a className="button button-dark" href="/register" style={{ marginTop: 20 }}>Get started free</a>
+                    <a className="button button-dark" href="/register" style={{ marginTop: 20 }}>Start 7-day trial</a>
                   </article>
                 </div>
               </section>

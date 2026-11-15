@@ -3,6 +3,7 @@ import { isValidObjectId, Types } from "mongoose";
 import { z } from "zod";
 import { Shop } from "../models/Shop.js";
 import { SubscriptionRequest } from "../models/SubscriptionRequest.js";
+import { SubscriptionPayment } from "../models/SubscriptionPayment.js";
 import { User } from "../models/User.js";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlanId } from "../subscriptionConfig.js";
 
@@ -40,7 +41,7 @@ adminSubscriptionsRouter.use(requireAdmin);
 
 adminSubscriptionsRouter.get("/", async (_request, response, next) => {
   try {
-    const [pending, recent, shopsCount, paidShopsCount, revenueAgg, allShops] = await Promise.all([
+    const [pending, recent, shopsCount, paidShopsCount, revenueAgg, razorpayRevenueAgg, allShops] = await Promise.all([
       SubscriptionRequest.find({ status: "pending" })
         .populate("shopId", "displayName slug city upiId")
         .populate("ownerId", "ownerName email mobile")
@@ -51,15 +52,19 @@ adminSubscriptionsRouter.get("/", async (_request, response, next) => {
         .sort({ updatedAt: -1 })
         .limit(40),
       Shop.countDocuments(),
-      Shop.countDocuments({ subscriptionPlan: { $in: ["starter", "pro", "premium"] } }),
+      Shop.countDocuments({ subscriptionPlan: "starter", subscriptionExpiresAt: { $gt: new Date() } }),
       SubscriptionRequest.aggregate([
         { $match: { status: "approved" } },
         { $group: { _id: null, total: { $sum: "$amountPaise" } } },
       ]),
-      Shop.find().select("displayName slug subscriptionPlan subscriptionExpiresAt subscriptionOrdersUsed subscriptionOrderLimit").sort({ createdAt: -1 }).limit(100),
+      SubscriptionPayment.aggregate([
+        { $match: { status: "paid" } },
+        { $group: { _id: null, total: { $sum: "$amountPaise" } } },
+      ]),
+      Shop.find().select("displayName slug subscriptionPlan subscriptionBillingCycle subscriptionExpiresAt subscriptionOrdersUsed subscriptionOrderLimit").sort({ createdAt: -1 }).limit(100),
     ]);
 
-    const totalRevenuePaise = revenueAgg[0]?.total ?? 0;
+    const totalRevenuePaise = (revenueAgg[0]?.total ?? 0) + (razorpayRevenueAgg[0]?.total ?? 0);
 
     response.json({
       pending,
@@ -71,7 +76,7 @@ adminSubscriptionsRouter.get("/", async (_request, response, next) => {
         totalRevenuePaise,
       },
       allShops,
-      availablePlans: SUBSCRIPTION_PLANS,
+      availablePlans: { demo: SUBSCRIPTION_PLANS.demo, starter: SUBSCRIPTION_PLANS.starter },
     });
   } catch (error) {
     next(error);
@@ -99,17 +104,19 @@ adminSubscriptionsRouter.post("/:id/approve", async (request, response, next) =>
     }
 
     const planConfig = SUBSCRIPTION_PLANS[subRequest.plan as SubscriptionPlanId] ?? SUBSCRIPTION_PLANS.starter;
-    const durationDays = subRequest.billingCycle === "annual" ? 365 : 30;
     const now = new Date();
 
     let newExpiresAt: Date;
     if (shop.subscriptionExpiresAt && new Date(shop.subscriptionExpiresAt).getTime() > now.getTime()) {
-      newExpiresAt = new Date(new Date(shop.subscriptionExpiresAt).getTime() + durationDays * 86400000);
+      newExpiresAt = new Date(new Date(shop.subscriptionExpiresAt));
     } else {
-      newExpiresAt = new Date(now.getTime() + durationDays * 86400000);
+      newExpiresAt = new Date(now);
     }
+    if (subRequest.billingCycle === "annual") newExpiresAt.setFullYear(newExpiresAt.getFullYear() + 1);
+    else newExpiresAt.setMonth(newExpiresAt.getMonth() + 1);
 
     shop.subscriptionPlan = subRequest.plan;
+    shop.subscriptionBillingCycle = subRequest.billingCycle;
     shop.subscriptionExpiresAt = newExpiresAt;
     shop.subscriptionOrderLimit = planConfig.orderLimit;
     shop.subscriptionOrdersUsed = 0;
@@ -165,11 +172,11 @@ adminSubscriptionsRouter.post("/:id/reject", async (request, response, next) => 
 });
 
 adminSubscriptionsRouter.post("/override", async (request, response, next) => {
-  const overrideSchema = z.object({
+    const overrideSchema = z.object({
     shopSlug: z.string().trim().min(2),
-    plan: z.enum(["demo", "starter", "pro", "premium"]),
+    plan: z.enum(["demo", "starter"]),
     durationDays: z.number().int().min(1).max(1000),
-    orderLimit: z.number().int().min(10).max(1000000).optional(),
+    orderLimit: z.number().int().min(0).max(1000000).optional(),
   });
 
   const parsed = overrideSchema.safeParse(request.body);
@@ -189,6 +196,7 @@ adminSubscriptionsRouter.post("/override", async (request, response, next) => {
     const newExpiresAt = new Date(Date.now() + parsed.data.durationDays * 86400000);
 
     shop.subscriptionPlan = parsed.data.plan;
+    shop.set("subscriptionBillingCycle", undefined);
     shop.subscriptionExpiresAt = newExpiresAt;
     shop.subscriptionOrderLimit = parsed.data.orderLimit ?? planConfig.orderLimit;
     shop.subscriptionOrdersUsed = 0;

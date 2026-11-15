@@ -35,6 +35,9 @@ const agentOnlineWindowMs = 30 * 1000;
 async function findOrderAcceptingShop(slug: string) {
   const shop = await Shop.findOne({ slug, isOnline: true });
   if (!shop) return null;
+  const now = Date.now();
+  if ((shop.subscriptionExpiresAt && shop.subscriptionExpiresAt.getTime() <= now)
+    || (shop.subscriptionOrderLimit > 0 && shop.subscriptionOrdersUsed >= shop.subscriptionOrderLimit)) return null;
   const agent = await AgentDevice.exists({
     shopId: shop._id,
     status: "online",
@@ -181,6 +184,8 @@ function publicShop(shop: InstanceType<typeof Shop> | null) {
     cashEnabled: record.cashEnabled,
     razorpayEnabled: isRazorpayEnabled() && record.razorpayEnabled !== false,
     razorpayMode: isRazorpayEnabled() ? getRazorpayMode() : null,
+    subscriptionAvailable: !((record.subscriptionExpiresAt && new Date(record.subscriptionExpiresAt).getTime() <= Date.now())
+      || (record.subscriptionOrderLimit > 0 && record.subscriptionOrdersUsed >= record.subscriptionOrderLimit)),
     enabledPaperSizes: record.enabledPaperSizes,
     colourEnabled: record.colourEnabled,
     duplexEnabled: record.duplexEnabled,
@@ -685,7 +690,11 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       );
     }
 
-    await Shop.updateOne({ _id: shop._id }, { $inc: { subscriptionOrdersUsed: 1 } });
+    // Only completed online payments, counter cash orders and the local-only test shortcut consume trial quota.
+    // An abandoned or failed Razorpay checkout does not count as a customer print order.
+    if (isPayHere || parsed.data.paymentMethod === "cash") {
+      await Shop.updateOne({ _id: shop._id }, { $inc: { subscriptionOrdersUsed: 1 } });
+    }
 
     response.status(201).json(customerOrderResponse(order));
   } catch (error) {
