@@ -30,10 +30,33 @@ export async function refreshDailySettlementRequests(): Promise<void> {
     orderIds: Types.ObjectId[];
   }>([
     {
+      $set: {
+        settlementAt: {
+          $ifNull: [
+            "$paymentCapturedAt",
+            {
+              $let: {
+                vars: {
+                  captureEvents: {
+                    $filter: {
+                      input: { $ifNull: ["$events", []] },
+                      as: "event",
+                      cond: { $in: ["$$event.type", ["razorpay_payment_captured", "razorpay_payment_captured_after_order_ended"]] },
+                    },
+                  },
+                },
+                in: { $arrayElemAt: ["$$captureEvents.timestamp", -1] },
+              },
+            },
+          ],
+        },
+      },
+    },
+    {
       $match: {
         paymentMethod: "razorpay",
         paymentStatus: "paid",
-        paymentCapturedAt: { $lt: beforeToday },
+        settlementAt: { $type: "date", $lt: beforeToday },
         razorpayPaymentId: { $type: "string" },
       },
     },
@@ -41,7 +64,7 @@ export async function refreshDailySettlementRequests(): Promise<void> {
       $group: {
         _id: {
           shopId: "$shopId",
-          dateKey: { $dateToString: { format: "%Y-%m-%d", date: "$paymentCapturedAt", timezone } },
+          dateKey: { $dateToString: { format: "%Y-%m-%d", date: "$settlementAt", timezone } },
         },
         amountPaise: { $sum: "$amountPaise" },
         orderIds: { $push: "$_id" },
@@ -61,6 +84,7 @@ export async function refreshDailySettlementRequests(): Promise<void> {
       orderIds: group.orderIds,
       shopName: shop.displayName,
       upiId: shop.upiId ?? "",
+      paymentMode: process.env.RAZORPAY_KEY_ID?.trim().startsWith("rzp_test_") ? "test" : "live",
     };
 
     if (existing) {

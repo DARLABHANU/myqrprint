@@ -8,6 +8,7 @@ const dailySettlementSchema = new Schema({
   orderIds: { type: [{ type: Schema.Types.ObjectId, ref: "PrintOrder" }], required: true },
   shopName: { type: String, required: true, maxlength: 100 },
   upiId: { type: String, default: "", maxlength: 100 },
+  paymentMode: { type: String, enum: ["test", "live"], default: "test", required: true },
   status: { type: String, enum: ["pending", "sent", "received"], default: "pending", required: true, index: true },
   transferReference: { type: String, maxlength: 40 },
   sentAt: { type: Date },

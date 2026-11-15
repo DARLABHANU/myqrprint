@@ -102,8 +102,12 @@ adminSettlementsRouter.post("/:id/mark-sent", async (request, response, next) =>
     return;
   }
   try {
-    const pending = await DailySettlement.findById(id.data).select("shopId amountPaise status");
+    const pending = await DailySettlement.findById(id.data).select("shopId amountPaise status paymentMode");
     if (!pending || pending.status !== "pending") { response.status(409).json({ error: "This settlement is no longer awaiting payment." }); return; }
+    if (pending.paymentMode === "test" || process.env.RAZORPAY_KEY_ID?.trim().startsWith("rzp_test_")) {
+      response.status(409).json({ error: "This request contains Razorpay test-mode payments. No real money was received, so it cannot be marked as transferred." });
+      return;
+    }
     if (pending.amountPaise !== body.data.expectedAmountPaise) { response.status(409).json({ error: "The settlement total changed. Refresh the page and verify the current amount before transferring." }); return; }
     const shop = await Shop.findById(pending.shopId).select("upiId");
     if (!shop?.upiId?.trim()) { response.status(409).json({ error: "Add a UPI ID to this shop before recording its settlement payment." }); return; }
