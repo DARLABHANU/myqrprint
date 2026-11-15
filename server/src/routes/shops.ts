@@ -12,6 +12,17 @@ export const shopsRouter = Router();
 
 const paperSizes = ["A3", "A4", "A5", "Legal"] as const;
 const agentOnlineWindowMs = 30 * 1000;
+const shopProfileSchema = z.object({
+  displayName: z.string().trim().min(2).max(100),
+  ownerName: z.string().trim().min(2).max(100),
+  logoDataUrl: z.string().max(700000).refine((value) => value === "" || /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value), "Upload a PNG, JPG or WEBP logo."),
+  mobile: z.string().trim().regex(/^[+0-9 ()-]{7,20}$/),
+  address: z.string().trim().max(300),
+  city: z.string().trim().max(100),
+  state: z.string().trim().max(100),
+  pincode: z.string().trim().max(12),
+  gstin: z.string().trim().max(15).transform((value) => value.toUpperCase()).refine((value) => value === "" || /^[0-9A-Z]{15}$/.test(value), "Enter a valid 15-character GSTIN."),
+}).strict();
 const rateSchema = z.object({
   blackWhiteSimplexPaise: z.number().int().min(0).max(100_000_000),
   colourSimplexPaise: z.number().int().min(0).max(100_000_000),
@@ -190,6 +201,31 @@ shopsRouter.get("/me", async (request, response, next) => {
     const onlineSince = new Date(Date.now() - agentOnlineWindowMs);
     const agentOnline = Boolean(await AgentDevice.exists({ shopId: shop._id, status: "online", lastSeenAt: { $gte: onlineSince } }));
     response.json({ shop, agentOnline, razorpayEnabled: isRazorpayEnabled() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Profile details are account data and may be changed from the signed-in web dashboard.
+// Printer, payment, routing, and shop-operation controls stay behind the desktop-agent guard.
+shopsRouter.patch("/profile", async (request, response, next) => {
+  const parsed = shopProfileSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ error: "Check the shop profile details and try again.", details: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  try {
+    const shop = await Shop.findOneAndUpdate(
+      { ownerId: request.session.userId },
+      { $set: parsed.data },
+      { new: true, runValidators: true },
+    );
+    if (!shop) {
+      response.status(404).json({ error: "Shop settings were not found." });
+      return;
+    }
+    await User.updateOne({ _id: request.session.userId }, { $set: { ownerName: parsed.data.ownerName } });
+    response.json({ shop });
   } catch (error) {
     next(error);
   }

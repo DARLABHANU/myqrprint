@@ -521,9 +521,8 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
     setNotice("");
     setSaving(true);
     try {
-      const { shop: savedShop } = await requestJson<{ shop: ShopSettings }>("/api/shops/me", {
-        method: "PUT",
-        body: JSON.stringify({
+      const profileOnly = section === "shop-profile";
+      const profile = {
           displayName: shop.displayName,
           ownerName: shop.ownerName,
           logoDataUrl: shop.logoDataUrl,
@@ -533,6 +532,11 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
           state: shop.state,
           pincode: shop.pincode,
           gstin: shop.gstin,
+      };
+      const { shop: savedShop } = await requestJson<{ shop: ShopSettings }>(profileOnly ? "/api/shops/profile" : "/api/shops/me", {
+        method: profileOnly ? "PATCH" : "PUT",
+        body: JSON.stringify(profileOnly ? profile : {
+          ...profile,
           upiId: "",
           upiEnabled: false,
           settlementUpiId: shop.settlementUpiId,
@@ -563,7 +567,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
       setShop((current) => ({ ...current, ...savedShop }));
       setUser((current) => current ? { ...current, ownerName: savedShop.ownerName } : current);
       window.dispatchEvent(new CustomEvent("printly:profile-updated", { detail: { ownerName: savedShop.ownerName, displayName: savedShop.displayName } }));
-      setNotice("Shop settings saved.");
+      setNotice(profileOnly ? "Shop profile saved." : "Shop settings saved.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to save shop settings.");
     } finally {
