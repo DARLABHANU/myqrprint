@@ -179,6 +179,7 @@ h1, h2, h3, p { margin-top: 0; }
 .google-sign-in > span { display: flex; align-items: center; gap: 10px; width: 100%; color: #87928b; font-size: 10px; }
 .google-sign-in > span::before, .google-sign-in > span::after { content: ""; flex: 1; height: 1px; background: #e7ebe7; }
 .google-sign-in > div { min-height: 42px; }
+.google-agent-button { width:100%; min-height:42px; display:flex; align-items:center; justify-content:center; gap:10px; border:1px solid #dadce0; border-radius:5px; background:#fff; color:#3c4043; font:500 14px Arial,sans-serif; cursor:pointer; }.google-agent-button:hover { background:#f8faff; border-color:#c8d4e6; }.google-agent-button:disabled { opacity:.65; cursor:wait; }.google-agent-button b { color:#4285f4; font-size:18px; font-weight:700; }
 .account-security { display: flex; align-items: center; justify-content: center; gap: 7px; padding-top: 16px; border-top: 1px solid #edf0ec; color: #829087; font-size: 9px; }
 .account-security svg { color: #4a9364; }
 .account-footer { margin: 0; text-align: center; color: #8c9790; font-size: 10px; }

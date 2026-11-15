@@ -32,6 +32,7 @@ export interface WindowPrintlyApi {
   getStatus: () => Promise<AgentStatus>;
   refresh: () => Promise<AgentStatus>;
   connect: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string; agentVersion?: string }>;
+  googleLogin: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string; agentVersion?: string }>;
   setShopOnline: (isOnline: boolean) => Promise<{ isOnline: boolean; agentOnline: boolean }>;
   disconnect: () => Promise<{ connected: boolean }>;
   openExternal: (url: string) => Promise<boolean>;

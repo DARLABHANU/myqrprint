@@ -65,6 +65,7 @@ type ShopSettings = {
 declare global {
   interface Window {
     printly?: {
+      googleLogin?: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string; agentVersion?: string }>;
       getStatus: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string }>;
       refresh: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string }>;
       connect?: () => Promise<{ connected: boolean; deviceName?: string; shopName?: string }>;

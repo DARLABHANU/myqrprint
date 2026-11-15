@@ -10,6 +10,8 @@ import { leasedPrintJobSchema, type DiscoveredPrinter } from '@printly/contracts
 
 const execFileAsync = promisify(execFile);
 
+if (process.platform === 'win32') app.setAppUserModelId('com.squirrel.UrQrPrintAgent.UrQrPrintAgent');
+
 const VERSION = app.getVersion();
 const credentialsPath = () => join(app.getPath('userData'), 'connection.bin');
 type Connection = { apiUrl: string; token: string; deviceName: string; shopName: string; deviceId: string };
@@ -281,13 +283,19 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 
 function createWindow() {
+  const appIconPath = join(app.getAppPath(), 'assets', 'urqrprint-icon.ico');
   mainWindow = new BrowserWindow({
-    title: 'UrQrPrint',
+    title: 'UrQrPrint — Print orders, made simple',
+    icon: appIconPath,
     width: 1320,
     height: 900,
     minWidth: 980,
     minHeight: 680,
-    backgroundColor: '#f4f7fa',
+    backgroundColor: '#ffffff',
+    ...(process.platform === 'win32' ? {
+      titleBarStyle: 'hidden' as const,
+      titleBarOverlay: { color: '#ffffff', symbolColor: '#314137', height: 36 },
+    } : {}),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
@@ -305,6 +313,21 @@ function createWindow() {
   void mainWindow.loadURL(launchUrl.toString());
 
   mainWindow.webContents.on('did-finish-load', () => {
+    if (process.platform === 'win32') {
+      const iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#237b53"/><path fill="#fff" d="M7 7h7v7H7zm11 0h7v7h-7zM7 18h7v7H7zm11 0h7v7h-7zM15 15h3v3h-3z"/></svg>';
+      const iconDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(iconSvg)}`;
+      void mainWindow?.webContents.executeJavaScript(`(() => {
+        if (document.getElementById('urqrprint-native-titlebar')) return;
+        const titlebar = document.createElement('div');
+        titlebar.id = 'urqrprint-native-titlebar';
+        titlebar.innerHTML = '<img alt="" src="${iconDataUrl}"><span>UrQrPrint — Print orders, made simple</span>';
+        titlebar.style.cssText = 'position:fixed;top:0;left:env(titlebar-area-x,0px);width:env(titlebar-area-width,100%);height:36px;box-sizing:border-box;display:flex;align-items:center;gap:9px;padding:0 12px;background:#fff;border-bottom:1px solid #edf0ed;color:#26332c;font:600 13px Segoe UI,Arial,sans-serif;z-index:2147483647;-webkit-app-region:drag;user-select:none';
+        titlebar.querySelector('img').style.cssText = 'width:20px;height:20px;display:block';
+        document.body.prepend(titlebar);
+        const appRoot = document.getElementById('root');
+        if (appRoot) { appRoot.style.paddingTop = '36px'; appRoot.style.boxSizing = 'border-box'; }
+      })()`);
+    }
     if (connection && sessionAuthenticated) {
       void heartbeat().catch((err) => console.warn('[AGENT] Post-load heartbeat failed:', err));
     }
@@ -348,8 +371,7 @@ app.whenReady().then(async () => {
   createWindow();
   if (connection) console.log('[AGENT] Saved desktop token found; waiting for shop sign-in in the app before reconnecting.');
   app.setLoginItemSettings({ openAtLogin: true });
-  const iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#079c73"/><path fill="#fff" d="M8 8h6v6H8zm10 0h6v6h-6zM8 18h6v6H8zm10 10V18h6v6h-6z"/></svg>';
-  tray = new Tray(nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(iconSvg)}`));
+  tray = new Tray(nativeImage.createFromPath(join(app.getAppPath(), 'assets', 'urqrprint-tray.png')));
   tray.setToolTip('UrQrPrint Agent');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open UrQrPrint Agent', click: () => { if (!mainWindow) createWindow(); mainWindow?.show(); mainWindow?.focus(); } },
@@ -407,6 +429,69 @@ ipcMain.handle('agent:open-external', async (_event, url: string) => {
   }
   return false;
 });
+ipcMain.handle('agent:google-login', async () => {
+  if (connection && sessionAuthenticated) {
+    return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
+  }
+  const startResponse = await fetch(new URL('/api/agent/login/start', renderApiUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceName: hostname(), agentVersion: VERSION }),
+  });
+  const startBody = await startResponse.json().catch(() => ({})) as { error?: string; state?: string; pollToken?: string };
+  if (!startResponse.ok || !startBody.state || !startBody.pollToken) {
+    throw new Error(startBody.error ?? 'Could not start Google sign-in. Please try again.');
+  }
+
+  const signInUrl = new URL('/desktop-login', productionWebUrl);
+  signInUrl.searchParams.set('state', startBody.state);
+  await shell.openExternal(signInUrl.toString());
+  const expiresAt = Date.now() + 5 * 60 * 1000;
+  while (Date.now() < expiresAt) {
+    let pollResponse: Response;
+    try {
+      pollResponse = await fetch(new URL('/api/agent/login/poll', renderApiUrl), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: startBody.state, pollToken: startBody.pollToken }),
+        signal: AbortSignal.timeout(12_000),
+      });
+    } catch (error) {
+      if (Date.now() >= expiresAt) break;
+      console.warn('[AGENT] Desktop sign-in poll had a temporary network failure; retrying:', error);
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      continue;
+    }
+    const pollBody = await pollResponse.json().catch(() => ({})) as {
+      error?: string; status?: string; accessToken?: string; deviceId?: string; deviceName?: string; shop?: { displayName?: string };
+    };
+    if ((pollResponse.status === 202 && pollBody.status === 'pending') || pollResponse.status >= 500) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      continue;
+    }
+    if (!pollResponse.ok) throw new Error(pollBody.error ?? 'Google sign-in could not be completed.');
+    if (pollBody.status !== 'complete' || !pollBody.accessToken || !pollBody.deviceId || !pollBody.deviceName || !pollBody.shop?.displayName) {
+      throw new Error('UrQrPrint returned incomplete desktop sign-in details.');
+    }
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure storage is unavailable on this computer.');
+    const nextConnection: Connection = {
+      apiUrl: renderApiUrl,
+      token: pollBody.accessToken,
+      deviceName: pollBody.deviceName,
+      shopName: pollBody.shop.displayName,
+      deviceId: pollBody.deviceId,
+    };
+    await writeFile(credentialsPath(), safeStorage.encryptString(JSON.stringify(nextConnection)));
+    connection = nextConnection;
+    sessionAuthenticated = true;
+    await heartbeat().catch((error) => console.warn('[AGENT] Initial Google sign-in heartbeat failed; background polling will retry:', error));
+    if (!pauseJobPolling) startPolling();
+    emitStatus({ message: 'Google sign-in complete.' });
+    return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
+  }
+  throw new Error('Google sign-in timed out. Finish sign-in in your browser, then try again.');
+});
+
 ipcMain.handle('agent:connect', async (event) => {
   let senderOrigin = '';
   try { senderOrigin = new URL(event.sender.getURL()).origin; } catch { /* reject below */ }

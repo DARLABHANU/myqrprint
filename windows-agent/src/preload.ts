@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('printly', {
   getStatus: (): Promise<AgentStatus> => ipcRenderer.invoke('agent:status'),
   refresh: (): Promise<AgentStatus> => ipcRenderer.invoke('agent:refresh'),
   connect: () => ipcRenderer.invoke('agent:connect'),
+  googleLogin: () => ipcRenderer.invoke('agent:google-login'),
   setShopOnline: (isOnline: boolean) => ipcRenderer.invoke('agent:shop-online', isOnline),
   disconnect: () => ipcRenderer.invoke('agent:disconnect'),
   openExternal: (url: string) => ipcRenderer.invoke('agent:open-external', url),

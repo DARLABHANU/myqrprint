@@ -328,7 +328,7 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? "";
 
   useEffect(() => {
-    if (!googleClientId || !googleButtonRef.current || (isRegister && otpStage)) return;
+    if (window.printly || !googleClientId || !googleButtonRef.current || (isRegister && otpStage)) return;
     let cancelled = false;
     const initializeGoogle = () => {
       if (cancelled || !window.google || !googleButtonRef.current) return;
@@ -352,7 +352,7 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
             body: JSON.stringify(isRegister
               ? { credential: result.credential, nonce: googleNonceRef.current, ownerName: formValues.ownerName, shopName: formValues.shopName, mobile: formValues.mobile, termsAccepted: formValues.termsAccepted }
               : { credential: result.credential, nonce: googleNonceRef.current }),
-          }).then(() => window.location.assign("/dashboard"))
+          }).then(() => afterAccountSignIn())
             .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Google sign-in failed."))
             .finally(() => setBusy(false));
         },
@@ -376,6 +376,23 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
     return () => { cancelled = true; };
   }, [googleClientId, isRegister, otpStage]);
 
+  function afterAccountSignIn() {
+    const desktopLogin = new URLSearchParams(window.location.search).get("desktopLogin");
+    window.location.assign(desktopLogin ? `/desktop-login?state=${encodeURIComponent(desktopLogin)}` : "/dashboard");
+  }
+
+  async function continueWithGoogleInDesktop() {
+    if (!window.printly?.googleLogin) return;
+    setBusy(true);
+    setError("");
+    try {
+      await window.printly.googleLogin();
+      window.location.assign("/dashboard");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Google sign-in did not finish.");
+    } finally { setBusy(false); }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -386,7 +403,7 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
           method: "POST",
           body: JSON.stringify({ email: values.email, code: otpCode }),
         });
-        window.location.assign("/dashboard");
+        afterAccountSignIn();
         return;
       }
       if (!isRegister) {
@@ -395,7 +412,7 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
           method: "POST",
           body: JSON.stringify({ email: values.email, password }),
         });
-        window.location.assign("/dashboard");
+        afterAccountSignIn();
         return;
       }
       const result = await requestJson<{ otpRequired: boolean; message: string }>("/api/auth/register", {
@@ -469,8 +486,8 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
           {isRegister && otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => { setOtpStage(false); setAccountNotice(""); setError(""); }}>Change registration details</button>}
         </form>
         {needsEmailVerification && <button className="text-link" type="button" disabled={busy || !values.email} onClick={() => void resendVerificationEmail()}>Resend verification email</button>}
-        {googleClientId && !otpStage && <div className="google-sign-in"><span>{isRegister ? "or create your account with" : "or continue with"}</span><div ref={googleButtonRef} /></div>}
-        <p className="account-switch">{isRegister ? "Already have an account?" : "New to UrQrPrint?"} <a href={isRegister ? "/login" : "/register"}>{isRegister ? "Sign in" : "Create an account"}</a></p>
+        {(googleClientId || window.printly?.googleLogin) && !otpStage && <div className="google-sign-in"><span>{isRegister ? "or create your account with" : "or continue with"}</span>{window.printly?.googleLogin ? <button className="google-agent-button" type="button" disabled={busy} onClick={() => void continueWithGoogleInDesktop()}><b aria-hidden="true">G</b>{busy ? "Continue in your browser…" : "Continue with Google"}</button> : <div ref={googleButtonRef} />}</div>}
+        <p className="account-switch">{isRegister ? "Already have an account?" : "New to UrQrPrint?"} <a href={`${isRegister ? "/login" : "/register"}${new URLSearchParams(window.location.search).get("desktopLogin") ? `?desktopLogin=${encodeURIComponent(new URLSearchParams(window.location.search).get("desktopLogin")!)}` : ""}`}>{isRegister ? "Sign in" : "Create an account"}</a></p>
         {!isRegister && <p className="account-switch"><a href="/forgot-password">Forgot your password?</a></p>}
         <div className="account-security"><ShieldCheck size={15} /> Your account is protected with a secure, private session.</div>
       </main>

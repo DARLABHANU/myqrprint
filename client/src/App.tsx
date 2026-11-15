@@ -23,6 +23,7 @@ import { DashboardTools } from "./DashboardTools";
 import { ReportsDashboardPage } from "./ReportsDashboardPage";
 import { PrinterManagementPage } from "./PrinterManagementPage";
 import { AuthFlowPage } from "./AuthFlowPage";
+import { DesktopAgentLoginPage } from "./DesktopAgentLoginPage";
 import { AdminSubscriptionReviewPage, SubscriptionPage } from "./SubscriptionPages";
 import { AdminSettlementsPage } from "./AdminSettlementsPage";
 import { ShopOverviewPage, ShopSupportPage, ShopWalletPage } from "./ShopPages";
@@ -80,6 +81,7 @@ export default function App() {
   }
   if (path === "/register") return <AccountPage mode="register" />;
   if (path === "/login") return <AccountPage mode="login" />;
+  if (path === "/desktop-login") return <DesktopAgentLoginPage />;
   if (path === "/verify-email") return <AuthFlowPage flow="email" />;
   if (path === "/forgot-password") return <AuthFlowPage flow="forgot" />;
   if (path === "/reset-password") return <AuthFlowPage flow="reset" />;

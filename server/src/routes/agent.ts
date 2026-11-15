@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import { isValidObjectId } from "mongoose";
 import { z } from "zod";
 import { AgentDevice } from "../models/AgentDevice.js";
+import { AgentLoginSession } from "../models/AgentLoginSession.js";
 import { CustomerUpload } from "../models/CustomerUpload.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { PrinterRoute } from "../models/PrinterRoute.js";
@@ -18,11 +19,29 @@ import { requireDesktopAgent } from "../agentAccess.js";
 import { statusForAgentPrintOutcome } from "../orderWorkflow.js";
 
 export const agentRouter = Router();
+const loginRouter = Router();
 const authenticatedAgentRouter = Router();
 const shopOwnerRouter = Router();
 const uploadDirectory = join(process.cwd(), "data", "uploads");
 const printLeaseMs = 10 * 60 * 1000;
 const onlineWindowMs = 5 * 60 * 1000;
+
+const desktopLoginStartLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  message: { error: "Too many desktop sign-in attempts. Wait before trying again." },
+});
+const desktopLoginPollLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  message: { error: "Too many desktop sign-in checks. Restart the sign-in flow." },
+});
 
 const connectionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -50,6 +69,113 @@ function requireShopOwner(request: Request, response: Response, next: NextFuncti
   }
   next();
 }
+
+const desktopLoginStartSchema = z.object({
+  deviceName: z.string().trim().min(1).max(120),
+  agentVersion: z.string().trim().min(1).max(40),
+}).strict();
+const desktopLoginStateSchema = z.object({ state: z.string().regex(/^[A-Za-z0-9_-]{40,64}$/) }).strict();
+const desktopLoginPollSchema = desktopLoginStateSchema.extend({ pollToken: z.string().regex(/^[A-Za-z0-9_-]{40,64}$/) }).strict();
+
+loginRouter.post("/login/start", desktopLoginStartLimiter, async (request, response, next) => {
+  const parsed = desktopLoginStartSchema.safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ error: "The desktop app sent invalid sign-in details." }); return; }
+  try {
+    const state = randomBytes(32).toString("base64url");
+    const pollToken = randomBytes(32).toString("base64url");
+    await AgentLoginSession.create({
+      stateHash: hashSecret(state),
+      pollTokenHash: hashSecret(pollToken),
+      deviceName: parsed.data.deviceName,
+      agentVersion: parsed.data.agentVersion,
+      status: "pending",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    });
+    response.status(201).json({ state, pollToken });
+  } catch (error) { next(error); }
+});
+
+loginRouter.post("/login/complete", requireShopOwner, async (request, response, next) => {
+  const parsed = desktopLoginStateSchema.safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ error: "The desktop sign-in request is invalid." }); return; }
+  try {
+    const shop = await Shop.findOne({ ownerId: request.session.userId }).select("_id");
+    if (!shop) { response.status(404).json({ error: "No shop is linked to this account." }); return; }
+    const login = await AgentLoginSession.findOne({ stateHash: hashSecret(parsed.data.state), expiresAt: { $gt: new Date() } });
+    if (!login) { response.status(410).json({ error: "This desktop sign-in expired. Try again in the agent." }); return; }
+    if (login.status === "pending") {
+      login.status = "completed";
+      login.shopId = shop._id;
+      await login.save();
+    } else if (login.status !== "completed" || String(login.shopId) !== String(shop._id)) {
+      response.status(409).json({ error: "This desktop sign-in was already used or belongs to another shop." });
+      return;
+    }
+    response.json({ completed: true, message: "Sign-in complete. Return to the UrQrPrint desktop app." });
+  } catch (error) { next(error); }
+});
+
+loginRouter.post("/login/poll", desktopLoginPollLimiter, async (request, response, next) => {
+  const parsed = desktopLoginPollSchema.safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ error: "The desktop sign-in check is invalid." }); return; }
+  try {
+    const now = new Date();
+    const query = { stateHash: hashSecret(parsed.data.state), pollTokenHash: hashSecret(parsed.data.pollToken), expiresAt: { $gt: now } };
+    const login = await AgentLoginSession.findOne(query);
+    if (!login) { response.status(410).json({ error: "This desktop sign-in expired. Try again in the agent." }); return; }
+    if (login.status === "pending" || login.status === "issuing") { response.status(202).json({ status: "pending" }); return; }
+    if (login.status === "consumed") { response.status(410).json({ error: "This desktop sign-in was already completed." }); return; }
+
+    const claimed = await AgentLoginSession.findOneAndUpdate(
+      { _id: login._id, status: "completed", expiresAt: { $gt: now } },
+      { $set: { status: "issuing" } },
+      { new: true },
+    );
+    if (!claimed || !claimed.shopId) { response.status(202).json({ status: "pending" }); return; }
+    try {
+      const shop = await Shop.findById(claimed.shopId).select("_id displayName");
+      if (!shop) throw new Error("No shop is linked to this account.");
+      const accessToken = randomBytes(48).toString("base64url");
+      const existing = await AgentDevice.findOne({ shopId: shop._id, deviceName: claimed.deviceName });
+      let agent = existing;
+      if (agent) {
+        agent.agentVersion = claimed.agentVersion;
+        agent.tokenHash = hashSecret(accessToken);
+        agent.tokenExpiresAt = undefined;
+        agent.status = "online";
+        agent.lastSeenAt = now;
+        agent.revokedAt = undefined;
+        await agent.save();
+      } else {
+        agent = await AgentDevice.create({
+          shopId: shop._id,
+          deviceName: claimed.deviceName,
+          agentVersion: claimed.agentVersion,
+          tokenHash: hashSecret(accessToken),
+          status: "online",
+          lastSeenAt: now,
+        });
+      }
+      await Shop.updateOne({ _id: shop._id }, { $set: { isOnline: false } });
+      await ShopPrinter.updateMany(
+        { shopId: shop._id, protocol: "windows" },
+        { $set: { agentDeviceId: agent._id, status: "ready" } },
+      );
+      claimed.status = "consumed";
+      await claimed.save();
+      response.json({
+        status: "complete",
+        deviceId: String(agent._id),
+        deviceName: agent.deviceName,
+        accessToken,
+        shop: { id: String(shop._id), displayName: shop.displayName },
+      });
+    } catch (error) {
+      await AgentLoginSession.updateOne({ _id: claimed._id, status: "issuing" }, { $set: { status: "completed" } });
+      throw error;
+    }
+  } catch (error) { next(error); }
+});
 
 async function requireAgent(request: Request, response: Response, next: NextFunction) {
   const authorization = request.get("authorization") ?? "";
@@ -381,6 +507,8 @@ shopOwnerRouter.delete("/devices/:deviceId", requireShopOwner, requireDesktopAge
   } catch (error) { next(error); }
 });
 
+// Browser-based sign-in routes use one-time state plus a separate poll token.
+agentRouter.use(loginRouter);
 // Owner endpoints must be checked with the web session before bearer-authenticated agent routes.
 agentRouter.use(shopOwnerRouter);
 agentRouter.use(authenticatedAgentRouter);

@@ -131,6 +131,8 @@ app.use((request, response, next) => {
   if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
     const origin = request.get("origin");
     const isAgentEndpoint = request.path === "/api/agent/connect"
+      || request.path === "/api/agent/login/start"
+      || request.path === "/api/agent/login/poll"
       || request.path === "/api/agent/heartbeat"
       || request.path === "/api/agent/jobs/next"
       || /^\/api\/agent\/jobs\/[^/]+\/(files\/[^/]+|result)$/.test(request.path);

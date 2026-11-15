@@ -1,6 +1,6 @@
 # UrQrPrint for Windows
 
-The desktop app opens the same UrQrPrint website pages and shop workflows. Shopkeepers sign in with their existing shop credentials; the app exchanges the authenticated session for a protected desktop connection, discovers local printers, receives paid jobs, renders PDF/photo pages, and submits them to the Windows print spooler. The shopkeeper controls shop availability in the desktop app. The app starts when the Windows user signs in and stays in the notification area when its window is closed.
+The desktop app opens the same UrQrPrint website pages and shop workflows. Shopkeepers sign in with their existing shop credentials; Google sign-in opens in the system browser and returns a one-time authorization to the app. The app stores its device token using Windows secure storage and reconnects automatically after restart. It exchanges the authenticated session for a protected desktop connection, discovers local printers, receives paid jobs, renders PDF/photo pages, and submits them to the Windows print spooler. The shopkeeper controls shop availability in the desktop app. The app starts when the Windows user signs in and stays in the notification area when its window is closed.
 
 ## Build the installer
 
@@ -12,7 +12,7 @@ npm run build -w @printly/contracts
 npm run make -w windows-agent
 ```
 
-The installer is written to `windows-agent/out/v0.1.1/make/squirrel.windows/x64/printly-windows-agent-0.1.1 Setup.exe`.
+The installer is written to `windows-agent/out/v0.1.4/make/squirrel.windows/x64/UrQrPrint Agent-0.1.4 Setup.exe`.
 
 ## Sign in and connect a shop computer
 
