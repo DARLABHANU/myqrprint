@@ -96,6 +96,9 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 export function ShopDashboardShell({ children }: { children: ReactNode }) {
   const path = window.location.pathname.replace(/\/$/, "") || "/dashboard";
   const isDesktopAgent = typeof window !== "undefined" && Boolean(window.printly);
+  // The website remains read-only for printer and order operations, but the
+  // shopkeeper must be able to acknowledge an admin settlement from any device.
+  const canConfirmSettlementOnWeb = path === "/dashboard/settlements";
   const [shop, setShop] = useState<ShopSummary | null>(null);
   const [account, setAccount] = useState<AccountSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -431,7 +434,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
         {!isDesktopAgent && <div role="status" style={{ margin: "0 0 16px", padding: "12px 16px", border: "1px solid #cfe8df", borderRadius: 12, background: "#effaf5", color: "#315f50", fontSize: 13, lineHeight: 1.5 }}><b>Read-only dashboard.</b> Manage printers, print jobs, and shop availability in the UrQrPrint desktop agent. Customers can place orders only while the agent is connected and the shop is set online there.</div>}
         <div className={`shop-dashboard-inner${settingTabs.length ? " has-setting-tabs" : ""}`}>
           {settingTabs.length > 0 && <nav className="shop-settings-tabs" aria-label={isSettingRoute ? "Setting" : "My Profile"}>{settingTabs.map(([label, href]) => <a key={href} className={path === href || (href.endsWith("/page") && path === "/dashboard/setting") || (href.endsWith("/profile") && path === "/dashboard/settings") ? "active" : ""} href={href}>{label}</a>)}</nav>}
-          <fieldset className="shop-dashboard-view-fieldset" disabled={!isDesktopAgent} style={{ border: 0, margin: 0, minWidth: 0, padding: 0, width: "100%" }}><div className="shop-dashboard-view">{children}</div></fieldset>
+          <fieldset className="shop-dashboard-view-fieldset" disabled={!isDesktopAgent && !canConfirmSettlementOnWeb} style={{ border: 0, margin: 0, minWidth: 0, padding: 0, width: "100%" }}><div className="shop-dashboard-view">{children}</div></fieldset>
         </div>
       </main>
     </div>
