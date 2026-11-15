@@ -33,6 +33,9 @@ const printOrderSchema = new Schema(
       required: true,
     },
     paymentMethod: { type: String, enum: ["upi", "cash", "pay_here", "razorpay"], required: true },
+    // Keep the gateway mode fixed on each order so switching to live keys never
+    // turns historical test payments into eligible shop settlements.
+    paymentMode: { type: String, enum: ["test", "live"] },
     paymentStatus: { type: String, enum: ["unverified", "awaiting_cash", "paid"], required: true },
     paymentClaimedAt: { type: Date },
     paymentReference: { type: String, maxlength: 80 },

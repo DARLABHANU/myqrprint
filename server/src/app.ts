@@ -17,6 +17,7 @@ import { razorpayWebhookRouter } from "./routes/razorpayWebhook.js";
 import { adminSettlementsRouter } from "./routes/adminSettlements.js";
 import { shopSettlementsRouter } from "./routes/shopSettlements.js";
 import { isMailConfigured } from "./services/mail.js";
+import { getRazorpayMode, isRazorpayEnabled } from "./services/razorpay.js";
 
 export const app = express();
 app.set("trust proxy", 1);
@@ -149,6 +150,7 @@ app.get("/api/health", (_request, response) => {
       ? isMailConfigured() ? "configured" : "not_configured"
       : "development-console",
     googleSignIn: process.env.GOOGLE_CLIENT_ID?.trim() ? "configured" : "not_configured",
+    razorpay: isRazorpayEnabled() ? getRazorpayMode() : "not_configured",
   });
 });
 

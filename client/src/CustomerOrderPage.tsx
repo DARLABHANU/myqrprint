@@ -898,7 +898,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
             {order.paymentMethod === "razorpay" && order.paymentStatus !== "paid" && (
               <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 16, textAlign: "left" }}>
                 <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, margin: "0 0 12px" }}>
-                  Finish the test payment in Razorpay Checkout. Your order will enter the print queue only after Razorpay confirms the payment.
+                  Complete payment securely with Razorpay. Your order enters the print queue only after the payment is verified.
                 </p>
                 {razorpayCheckout && (
                   <button type="button" disabled={submitting} onClick={() => void retryRazorpayPayment()} style={{ width: "100%", padding: "11px 16px", border: 0, borderRadius: 9, background: "#079c73", color: "#fff", fontSize: 13, fontWeight: 750, cursor: submitting ? "wait" : "pointer" }}>

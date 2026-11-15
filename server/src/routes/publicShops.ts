@@ -18,7 +18,7 @@ import { CustomerUpload } from "../models/CustomerUpload.js";
 import { AgentDevice } from "../models/AgentDevice.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { Shop } from "../models/Shop.js";
-import { captureRazorpayPayment, createRazorpayOrder, fetchRazorpayPayment, isRazorpayEnabled, markRazorpayPaymentCaptured, razorpayPublicKeyId, verifyCheckoutSignature } from "../services/razorpay.js";
+import { captureRazorpayPayment, createRazorpayOrder, fetchRazorpayPayment, getRazorpayMode, isRazorpayEnabled, markRazorpayPaymentCaptured, razorpayPublicKeyId, verifyCheckoutSignature } from "../services/razorpay.js";
 import {
   deleteFromCloudinary,
   isCloudinaryEnabled,
@@ -551,7 +551,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
     return;
   }
   if (parsed.data.paymentMethod === "razorpay" && !isRazorpayEnabled()) {
-    response.status(503).json({ error: "Razorpay test checkout is not configured yet." });
+    response.status(503).json({ error: "Razorpay checkout is not configured yet." });
     return;
   }
 
@@ -608,7 +608,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       return;
     }
     if (parsed.data.paymentMethod === "razorpay" && (!isRazorpayEnabled() || shop.razorpayEnabled === false)) {
-      response.status(503).json({ error: "Razorpay test checkout is not configured yet." });
+      response.status(503).json({ error: "Razorpay checkout is not configured yet." });
       return;
     }
 
@@ -642,6 +642,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
           idempotencyKey: idempotencyKey.data,
           status,
           paymentMethod: parsed.data.paymentMethod,
+          ...(isRazorpay ? { paymentMode: getRazorpayMode() ?? "test" } : {}),
           paymentStatus,
           customerName: parsed.data.customerName,
           customerMobile: parsed.data.customerMobile,
@@ -658,7 +659,7 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
           events: [
             { type: "order_created", actorType: "customer", timestamp: now },
             ...(isPayHere ? [{ type: "instant_payment_received", actorType: "customer" as const, timestamp: now, note: "Paid instantly via Pay Here. Queued for auto-printing." }] : []),
-          ...(isRazorpay ? [{ type: "razorpay_checkout_created", actorType: "system" as const, timestamp: now, note: "Awaiting verified Razorpay test payment." }] : []),
+          ...(isRazorpay ? [{ type: "razorpay_checkout_created", actorType: "system" as const, timestamp: now, note: `Awaiting verified Razorpay ${getRazorpayMode() ?? ""} payment.`.trim() }] : []),
           ],
           expiresAt,
         });

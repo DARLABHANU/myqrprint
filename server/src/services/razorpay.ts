@@ -3,6 +3,7 @@ import { PrintOrder } from "../models/PrintOrder.js";
 import { Shop } from "../models/Shop.js";
 
 const razorpayApi = "https://api.razorpay.com/v1";
+export type RazorpayMode = "test" | "live";
 
 export type RazorpayOrder = {
   id: string;
@@ -22,9 +23,20 @@ export type RazorpayPayment = {
 function credentials() {
   const keyId = process.env.RAZORPAY_KEY_ID?.trim();
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keyId || !keySecret) throw new Error("Razorpay test credentials are not configured on the backend.");
-  if (!keyId.startsWith("rzp_test_")) throw new Error("This build accepts Razorpay test-mode credentials only.");
+  if (!keyId || !keySecret) throw new Error("Razorpay credentials are not configured on the backend.");
+  const mode = getRazorpayMode();
+  if (!mode) throw new Error("Razorpay key ID must be a valid test or live key.");
+  if (process.env.NODE_ENV === "production" && mode !== "live") {
+    throw new Error("Razorpay test credentials are disabled in production.");
+  }
   return { keyId, keySecret };
+}
+
+export function getRazorpayMode(): RazorpayMode | null {
+  const keyId = process.env.RAZORPAY_KEY_ID?.trim();
+  if (keyId?.startsWith("rzp_test_")) return "test";
+  if (keyId?.startsWith("rzp_live_")) return "live";
+  return null;
 }
 
 function authorizationHeader() {
@@ -50,8 +62,10 @@ async function razorpayRequest<T>(path: string, init: RequestInit = {}): Promise
 }
 
 export function isRazorpayEnabled(): boolean {
+  const mode = getRazorpayMode();
   return Boolean(
-    process.env.RAZORPAY_KEY_ID?.trim().startsWith("rzp_test_")
+    mode
+    && (process.env.NODE_ENV !== "production" || mode === "live")
     && process.env.RAZORPAY_KEY_SECRET
     && process.env.RAZORPAY_WEBHOOK_SECRET,
   );
