@@ -25,6 +25,28 @@ import { QRCodeSVG } from "qrcode.react";
 
 const publicCustomerOrigin = "https://www.urqrprint.shop";
 
+async function copyTextToClipboard(value: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Fall back to the selection-based copy path for embedded/Electron contexts.
+    }
+  }
+  const field = document.createElement("textarea");
+  field.value = value;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  field.style.pointerEvents = "none";
+  document.body.append(field);
+  field.select();
+  const copied = document.execCommand("copy");
+  field.remove();
+  if (!copied) throw new Error("Clipboard access is unavailable. Select and copy the shop link instead.");
+}
+
 declare global {
   interface Window {
     google?: {
@@ -187,7 +209,7 @@ export function ShopQrCodePage() {
   const [posterLanguage, setPosterLanguage] = useState<"en" | "hi">("en");
   useEffect(() => { void requestJson<{ shop: ShopSettings }>("/api/shops/me").then(({ shop: saved }) => setShop({ ...createEmptyShop(), ...saved })).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load your shop QR code.")).finally(() => setLoading(false)); }, []);
   function url() { return new URL(`/p/${encodeURIComponent(shop.slug)}`, publicCustomerOrigin).toString(); }
-  async function copyLink() { setCopying(true); setError(""); try { await navigator.clipboard.writeText(url()); setNotice("Customer page link copied."); } catch { setError("Could not copy the customer link. Copy it from the address below."); } finally { setCopying(false); } }
+  async function copyLink() { setCopying(true); setError(""); setNotice(""); try { await copyTextToClipboard(url()); setNotice("Customer page link copied."); } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not copy the customer link. Copy it from the address below."); } finally { setCopying(false); } }
   function getSvg() { return document.querySelector<SVGSVGElement>("#shop-qr-code svg"); }
   function downloadQr() { const svg = getSvg(); if (!svg) { setError("The QR code is not ready yet."); return; } const objectUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml;charset=utf-8" })); const link = document.createElement("a"); link.href = objectUrl; link.download = `${shop.slug}-urqrprint-qr.svg`; link.click(); URL.revokeObjectURL(objectUrl); }
   function printPoster() {
@@ -204,8 +226,8 @@ export function ShopQrCodePage() {
   return <div className="workspace-page"><main className="settings-main shop-qr-page-main">
     <header className="shop-qr-page-heading"><div><h1>My QR code</h1><p>Customers scan this QR to send files straight to your printer.</p></div><div><button type="button" className="qr-secondary-button" onClick={printPoster}><Download size={14}/> PDF</button><button type="button" className="button button-primary" onClick={printPoster}><Printer size={14}/> Print poster</button></div></header>
     {error && <div className="form-alert" role="alert">{error}</div>}{notice && <div className="success-alert" role="status">{notice}</div>}
-    <section className="shop-qr-live-card"><div className="shop-qr-live-image" id="shop-qr-code"><QRCodeSVG value={url()} size={112} level="H" includeMargin fgColor={posterColor} bgColor="#fff" title={`QR code for ${shop.displayName}`}/></div><div className="shop-qr-live-details"><div className="shop-qr-name-row"><h2>{shop.displayName}</h2><span>● Live</span><small>Powered by <b>UrQrPrint</b></small></div><div className="shop-qr-link"><Link2 size={14}/><a href={url()} target="_blank" rel="noreferrer">{url()}</a><button type="button" onClick={() => void copyLink()} disabled={copying}><Copy size={14}/>{copying ? "Copied" : "Copy"}</button></div><div className="shop-qr-actions"><a className="button button-primary" href={`https://wa.me/?text=${encodeURIComponent(`Order prints from ${shop.displayName}: ${url()}`)}`} target="_blank" rel="noreferrer"><MessageCircle size={14}/> WhatsApp</a><button type="button" className="qr-secondary-button" onClick={downloadQr}><QrCode size={14}/> QR image (SVG)</button><button type="button" className="qr-secondary-button" onClick={downloadQrPng}><ImageIcon size={14}/> QR image (PNG)</button><a className="qr-secondary-button" href={url()} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Open</a></div></div></section>
-    <section className="settings-card shop-poster-card"><header><h2>Create a poster</h2><p>4 easy steps — pick a design, then download or print</p></header><div className="poster-preview-wrap"><div className="poster-preview-heading"><b>◉ &nbsp;Live preview</b><span>{posterSize === "sticker" ? "10 × 10 cm sticker · Glass door / desk" : `${posterSize} poster · ${posterSize === "A4" ? "Counter / wall" : "Table stand"}`}</span></div><div className={`poster-preview ${posterStyle}`} style={{"--poster-color":posterColor} as React.CSSProperties}><small>PRINT FROM YOUR PHONE</small><h2>{shop.displayName || "Your shop name"}</h2><p>Scan · Upload · Pay · Print</p><QRCodeSVG value={url()} size={148} level="H" includeMargin/></div>
+    <section className="shop-qr-live-card"><div className="shop-qr-live-image" id="shop-qr-code"><QRCodeSVG value={url()} size={98} level="H" includeMargin fgColor={posterColor} bgColor="#fff" title={`QR code for ${shop.displayName}`}/></div><div className="shop-qr-live-details"><div className="shop-qr-name-row"><h2>{shop.displayName}</h2><span>● Live</span><small>Powered by <b>UrQrPrint</b></small></div><div className="shop-qr-link"><Link2 size={14}/><a href={url()} target="_blank" rel="noreferrer">{url()}</a><button type="button" onClick={() => void copyLink()} disabled={copying}><Copy size={14}/>{copying ? "Copying…" : "Copy"}</button></div><div className="shop-qr-actions"><a className="button button-primary" href={`https://wa.me/?text=${encodeURIComponent(`Order prints from ${shop.displayName}: ${url()}`)}`} target="_blank" rel="noreferrer"><MessageCircle size={14}/> WhatsApp</a><button type="button" className="qr-secondary-button" onClick={downloadQr}><QrCode size={14}/> QR image (SVG)</button><button type="button" className="qr-secondary-button" onClick={downloadQrPng}><ImageIcon size={14}/> QR image (PNG)</button><a className="qr-secondary-button" href={url()} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Open</a></div></div></section>
+    <section className="settings-card shop-poster-card"><header><h2>Create a poster</h2><p>4 easy steps — pick a design, then download or print</p></header><div className="poster-preview-wrap"><div className="poster-preview-heading"><b>◉ &nbsp;Live preview</b><span>{posterSize === "sticker" ? "10 × 10 cm sticker · Glass door / desk" : `${posterSize} poster · ${posterSize === "A4" ? "Counter / wall" : "Table stand"}`}</span></div><div className={`poster-preview ${posterStyle}`} style={{"--poster-color":posterColor, aspectRatio:posterSize === "sticker" ? "1 / 1" : "210 / 297"} as React.CSSProperties}><small>PRINT FROM YOUR PHONE</small><h2>{shop.displayName || "Your shop name"}</h2><p>Scan · Upload · Pay · Print</p><QRCodeSVG value={url()} size={148} level="H" includeMargin/></div>
     <div className="poster-steps"><section><h3><i>1</i> Choose size</h3>{([ ["A4","A4 poster","Counter / wall"],["A5","A5 poster","Table stand"],["sticker","Sticker 10×10 cm","Glass door / desk"]] as const).map(([value,label,help])=><label key={value} className={posterSize===value?"selected":""}><input type="radio" checked={posterSize===value} onChange={()=>setPosterSize(value)}/><b>{label}</b><small>{help}</small></label>)}</section><section><h3><i>2</i> Choose design</h3>{([ ["classic","Classic","Colour header"],["minimal","Minimal","White, clean"],["bold","Bold","Full colour"]] as const).map(([value,label,help])=><label key={value} className={posterStyle===value?"selected":""}><input type="radio" checked={posterStyle===value} onChange={()=>setPosterStyle(value)}/><b>{label}</b><small>{help}</small></label>)}</section><section><h3><i>3</i> Colour and text</h3><label>Colour<div className="poster-colours">{["#079b70","#2877d1","#7654ca","#db4b4b","#ed8a17","#172b50"].map(color=><button type="button" aria-label={`Poster colour ${color}`} className={posterColor===color?"selected":""} key={color} style={{background:color}} onClick={()=>setPosterColor(color)}/>)}</div></label><label>Shop name on poster<input value={shop.displayName} readOnly/></label><label>Language<select value={posterLanguage} onChange={event=>setPosterLanguage(event.target.value as "en"|"hi")}><option value="en">English</option><option value="hi">हिंदी</option></select></label></section><section><h3><i>4</i> Download or print</h3><button type="button" className="button button-primary" onClick={printPoster}><Printer size={15}/> Print now <small>Straight to your printer — best quality</small></button><button type="button" className="qr-secondary-button" onClick={printPoster}><FileText size={15}/> Download PDF <small>Print-ready · {posterSize}</small></button><button type="button" className="qr-secondary-button" onClick={downloadPosterPng}><Download size={15}/> Download PNG <small>HD image · {posterSize}</small></button></section></div></div></section>
     <section className="settings-card qr-placement-card"><h2>Where to place the QR</h2><p>Tips for more scans</p><ol><li>Put it at eye level in front of the counter, where the queue forms.</li><li>Stick a copy on the glass door outside, so customers can order even when the shop is closed.</li><li>Laminate it or use an acrylic stand so the QR stays undamaged.</li><li>Keep the QR at least 10 × 10 cm and avoid glossy surfaces.</li></ol><small>After printing, always scan the QR once with your phone to test it.</small></section>
   </main></div>;
@@ -612,14 +634,14 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
   }
 
   function getCustomerUrl() {
-    return new URL(`/p/${encodeURIComponent(shop.slug)}`, window.location.origin).toString();
+    return new URL(`/p/${encodeURIComponent(shop.slug)}`, publicCustomerOrigin).toString();
   }
 
   async function copyCustomerUrl() {
     setCopyingShopLink(true);
     setError("");
     try {
-      await navigator.clipboard.writeText(getCustomerUrl());
+      await copyTextToClipboard(getCustomerUrl());
       setNotice("Customer page link copied.");
     } catch (reason) {
       setError(reason instanceof Error ? `Could not copy the shop link: ${reason.message}` : "Could not copy the shop link.");
@@ -763,7 +785,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
                 <div className="shop-qr-details">
                   <div className="settings-fields two-col"><label>Poster size<select value={posterSize} onChange={(event) => setPosterSize(event.target.value as "A4" | "A5" | "sticker")}><option value="A4">A4</option><option value="A5">A5</option><option value="sticker">10 × 10 cm sticker</option></select></label><label>Design<select value={posterStyle} onChange={(event) => setPosterStyle(event.target.value as "classic" | "minimal" | "bold")}><option value="classic">Classic</option><option value="minimal">Minimal</option><option value="bold">Bold</option></select></label><label>Poster language<select value={posterLanguage} onChange={(event) => setPosterLanguage(event.target.value as "en" | "hi")}><option value="en">English</option><option value="hi">Hindi</option></select></label><label>QR color<input type="color" value={posterColor} onChange={(event) => setPosterColor(event.target.value)} /></label></div>
                   <b>{shop.displayName}</b>
-                  <a href={`/p/${encodeURIComponent(shop.slug)}`} target="_blank" rel="noreferrer">{getCustomerUrl()}</a>
+                  <a href={getCustomerUrl()} target="_blank" rel="noreferrer">{getCustomerUrl()}</a>
                   <p>This QR opens your public customer page. It does not collect payment or reveal private shop settings.</p>
                   <div className="shop-qr-actions">
                     <button className="button button-dark" type="button" disabled={copyingShopLink} onClick={() => void copyCustomerUrl()}>{copyingShopLink ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}Copy link</button>
