@@ -11,7 +11,6 @@ import {
   Lock,
   Minus,
   Plus,
-  Printer,
   QrCode,
   ShieldCheck,
   Smartphone,
@@ -829,7 +828,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
             <span style={{ fontSize: 11, fontWeight: 800, color: razorpayPaymentPending ? "#c2410c" : "#079c73", letterSpacing: "1px", textTransform: "uppercase" }}>{razorpayPaymentPending ? "PAYMENT REQUIRED" : "ORDER RECEIVED"}</span>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "6px 0 10px" }}>{razorpayPaymentPending ? "Complete payment to place your order" : "Your print order is in!"}</h1>
             <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "0 0 20px" }}>
-              {razorpayPaymentPending ? "Your files are saved, but the shop has not received a paid print order yet. Complete payment below to continue." : "Show this pickup code at the counter. The shopkeeper will verify and print your order."}
+              {razorpayPaymentPending ? "Your files are saved, but the shop has not received a paid print order yet. Complete payment below to continue." : "Keep this pickup code and show it at the counter when you collect your print."}
             </p>
 
             <div style={{ background: "#f8fafc", border: "1.5px dashed #cbd5e1", borderRadius: 14, padding: "16px", marginBottom: 20 }}>
@@ -839,7 +838,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
               </div>
               <span style={{ fontSize: 12, fontWeight: 700, color: order.paymentStatus === "paid" ? "#16a34a" : "#ea580c" }}>
                 {order.paymentStatus === "paid"
-                  ? order.status === "needs_approval" ? "✓ Payment confirmed · Waiting for shop approval" : order.status === "submitted" ? "✓ Sent to printer · Awaiting shop confirmation" : order.status === "failed" ? "✓ Payment confirmed · Print retry needed" : "✓ Payment Confirmed · Print queued"
+                  ? order.status === "needs_approval" ? "✓ Payment confirmed · Waiting for shop approval" : order.status === "submitted" ? "✓ Printed · Ready for pickup" : order.status === "failed" ? "✓ Payment confirmed · Printing failed" : "✓ Payment Confirmed · Print queued"
                   : order.paymentMethod === "upi"
                     ? "Waiting for UPI Verification"
                     : order.paymentMethod === "razorpay"
@@ -877,9 +876,9 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
                     <span>🖨️ Printing on your printer right now…</span>
                   </>
                 ) : order.status === "submitted" ? (
-                  <><Printer size={18} color="#2563eb" /><span>Sent to the printer. The shop is confirming the pages came out.</span></>
+                  <><CheckCircle2 size={18} color="#10b981" /><span>Printed successfully. Collect your pages at the counter.</span></>
                 ) : order.status === "failed" ? (
-                  <><X size={18} color="#e11d48" /><span>Printing needs attention. The shop can retry your order.</span></>
+                  <><X size={18} color="#e11d48" /><span>The printer reported a failure. Contact the shop for help.</span></>
                 ) : order.status === "needs_approval" ? (
                   <><Clock size={18} color="#2563eb" /><span>Payment confirmed. Waiting for the shop to approve printing.</span></>
                 ) : (

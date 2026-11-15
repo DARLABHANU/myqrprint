@@ -895,6 +895,19 @@ h1, h2, h3, p { margin-top: 0; }
 .overview-printers-empty { padding:34px 18px 16px; text-align:center; }
 .overview-printers-empty p { margin:0 0 26px; color:#8491a3; font-size:12px; }
 .overview-printers-empty a { min-height:36px; display:flex; align-items:center; justify-content:center; border-radius:9px; background:#f5f8fb; color:#078c68; text-decoration:none; font-size:10px; font-weight:650; }
+.overview-equipment-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px; padding:18px; }
+.overview-equipment-group h3 { display:flex; align-items:center; gap:7px; margin:0 0 9px; color:#526176; font:700 11px Manrope,sans-serif; }
+.overview-equipment-group h3 span { display:inline-grid; min-width:20px; height:20px; place-items:center; border-radius:999px; background:#eff4f8; color:#63738a; font-size:10px; }
+.overview-equipment-group > div { display:grid; gap:7px; }
+.overview-equipment-item { min-height:42px; display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid #e7edf3; border-radius:10px; color:#28384d; text-decoration:none; transition:border-color .15s,background .15s; }
+.overview-equipment-item:hover { border-color:#9ddbc8; background:#f5fcf9; }
+.overview-equipment-item > span:nth-child(2) { overflow:hidden; flex:1; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:650; }
+.overview-equipment-item small { color:#718096; font-size:10px; white-space:nowrap; }
+.overview-equipment-item > svg:last-child { color:#91a0b3; }
+.overview-equipment-dot { width:8px; height:8px; flex:none; border-radius:50%; background:#94a3b8; }
+.overview-equipment-dot[data-state="online"] { background:#08a579; box-shadow:0 0 0 3px #e3f8ef; }
+.overview-equipment-empty,.overview-equipment-state { margin:0; padding:22px 18px; color:#8491a3; font-size:11px; text-align:center; }
+.overview-equipment-state a { margin-left:5px; color:#078c68; font-weight:650; }
 .overview-printer-list { display:grid; }
 .overview-printer-list article { min-height:57px; display:flex; align-items:center; gap:11px; padding:10px 18px; border-bottom:1px solid #edf1f5; }
 .overview-printer-dot { width:9px; height:9px; border-radius:50%; background:#c4ccd6; }

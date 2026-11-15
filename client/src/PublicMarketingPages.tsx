@@ -117,7 +117,7 @@ const articles = [
     intro: "Map a familiar walk-in print service into a clear, phone-friendly order journey.",
     sections: [
       ["Start with the customer journey", "List the decisions a visitor needs to make: file type, paper, colour, copies, payment, and pickup. Keep the sequence short and explain unfamiliar print terms where they appear."],
-      ["Make the counter workflow explicit", "Decide who reviews new jobs, confirms payment, and marks a completed print ready for collection. A visible queue helps staff share those steps."],
+      ["Make the counter workflow explicit", "Verified online payments and cash orders enter the shop's print workflow. The desktop agent reports a successful printer response and marks the order ready for collection."],
       ["Pilot before expanding", "Try the flow with a few common documents, check the resulting prints, and update instructions based on questions customers actually ask."],
     ],
   },
@@ -383,7 +383,7 @@ const pageContent: Record<string, MarketingPage> = {
     category: "solutions",
     sections: [
       { title: "Reduce file handoffs", body: "Customers upload their documents from a phone using the shop QR." },
-      { title: "Keep the counter organized", body: "Review order settings, payment status, and manual fulfillment progress from the order list." },
+      { title: "Keep the counter organized", body: "Review order settings and payment status, then track jobs as the desktop agent sends them to the printer." },
       { title: "Use existing printers", body: "Pair a Windows computer and configure routes for printers already installed at the shop." },
     ],
   },
@@ -413,7 +413,7 @@ const pageContent: Record<string, MarketingPage> = {
     category: "solutions",
     sections: [
       { title: "No customer app required", body: "A scan opens the order page in a browser and guides the customer through file selection." },
-      { title: "A clearer order queue", body: "Keep incoming orders visible to staff and track payment and manual fulfillment status." },
+      { title: "A clearer order queue", body: "Keep incoming orders visible to staff and track payment and printer status." },
       { title: "Shop-managed service", body: "The counter controls rates, supported paper options, printer routes, and pickup." },
     ],
   },

@@ -77,7 +77,7 @@ export const leasedPrintJobSchema = z.object({
 
 export const printJobResultSchema = z.object({
   leaseId: z.string().min(1),
-  outcome: z.enum(["submitted", "failed"]),
+  outcome: z.enum(["printed", "submitted", "failed"]),
   spoolerJobIds: z.array(z.string().max(120)).max(10).default([]),
   errorCode: z.string().trim().max(80).optional(),
   errorMessage: z.string().trim().max(240).optional(),

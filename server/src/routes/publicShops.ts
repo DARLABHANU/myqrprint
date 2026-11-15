@@ -863,6 +863,7 @@ publicShopsRouter.post("/:slug/orders/:code/razorpay/verify", orderLimiter, asyn
       paymentId: payment.id,
       amount: payment.amount,
       currency: payment.currency,
+      method: payment.method,
     });
     if (!result.found || !result.matched || !result.order) {
       response.status(409).json({ error: "Payment confirmation needs review. Contact the shop before paying again." });

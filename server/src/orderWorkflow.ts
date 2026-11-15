@@ -12,7 +12,11 @@ export type OrderStatus =
   | "expired";
 
 export type PaymentStatus = "unverified" | "awaiting_cash" | "paid";
-export type MerchantOrderAction = "confirm_payment" | "approve_order" | "mark_ready" | "requeue" | "reject" | "cancel";
+export type MerchantOrderAction = "confirm_payment" | "approve_order" | "reject" | "cancel";
+
+export function statusForAgentPrintOutcome(outcome: "printed" | "submitted" | "failed"): OrderStatus {
+  return outcome === "failed" ? "failed" : "printed";
+}
 
 export type OrderState = {
   status: OrderStatus;
@@ -37,17 +41,7 @@ export function transitionMerchantOrder(
       };
     case "approve_order":
       if ((current.status !== "needs_approval" && current.status !== "queued") || current.paymentStatus !== "paid") {
-        throw new Error("Only a payment-confirmed order can enter fulfillment queue.");
-      }
-      return { ...current, status: "queued" };
-    case "mark_ready":
-      if ((current.status !== "queued" && current.status !== "printing" && current.status !== "submitted") || current.paymentStatus !== "paid") {
-        throw new Error("Only a paid order in the print workflow can be marked ready.");
-      }
-      return { ...current, status: "printed" };
-    case "requeue":
-      if (!(["failed", "submitted"].includes(current.status)) || current.paymentStatus !== "paid") {
-        throw new Error("Only a paid failed or submitted order can be retried.");
+        throw new Error("Only a payment-confirmed order can enter the print queue.");
       }
       return { ...current, status: "queued" };
     case "reject":

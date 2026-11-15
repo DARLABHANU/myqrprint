@@ -25,7 +25,17 @@ export type RazorpayPayment = {
   amount: number;
   currency: string;
   status: string;
+  method?: string;
 };
+
+const supportedPaymentChannels = ["upi", "card", "netbanking", "wallet", "emi", "paylater"] as const;
+type PaymentChannel = typeof supportedPaymentChannels[number] | "other";
+
+function normalizePaymentChannel(method?: string): PaymentChannel | undefined {
+  if (!method) return undefined;
+  const normalized = method.trim().toLowerCase();
+  return (supportedPaymentChannels as readonly string[]).includes(normalized) ? normalized as PaymentChannel : "other";
+}
 
 function credentials() {
   const keyId = process.env.RAZORPAY_KEY_ID?.trim();
@@ -144,6 +154,7 @@ export async function markRazorpayPaymentCaptured(input: {
   paymentId: string;
   amount: number;
   currency: string;
+  method?: string;
 }) {
   const order = await PrintOrder.findOne({ razorpayOrderId: input.orderId });
   if (!order) return { found: false as const };
@@ -156,6 +167,7 @@ export async function markRazorpayPaymentCaptured(input: {
   if (order.paymentStatus !== "paid") {
     order.razorpayPaymentId = input.paymentId;
     order.paymentReference = input.paymentId;
+    order.paymentChannel = normalizePaymentChannel(input.method);
     order.paymentStatus = "paid";
     order.paymentCapturedAt = new Date();
     if (["awaiting_payment", "awaiting_cash"].includes(order.status)) {
@@ -177,6 +189,9 @@ export async function markRazorpayPaymentCaptured(input: {
   } else if (order.razorpayPaymentId && order.razorpayPaymentId !== input.paymentId) {
     console.error("Rejected a second Razorpay payment for already-paid UrQrPrint order", order.publicCode);
     return { found: true as const, matched: false as const };
+  } else if (!order.paymentChannel && input.method) {
+    order.paymentChannel = normalizePaymentChannel(input.method);
+    await order.save();
   }
   return { found: true as const, matched: true as const, order };
 }

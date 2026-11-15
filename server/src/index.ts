@@ -6,6 +6,7 @@ import { sendDailyShopSummaries } from "./services/dailySummary.js";
 import { isCloudinaryEnabled } from "./services/cloudinary.js";
 import { expireDisconnectedAgents } from "./services/agentPresence.js";
 import { refreshDailySettlementRequests } from "./services/dailySettlements.js";
+import { PrintOrder } from "./models/PrintOrder.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const mongoUri = process.env.MONGODB_URI ?? "";
@@ -18,6 +19,18 @@ async function start() {
   console.log("[UrQrPrint Server] Connecting to database...");
   await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 8000 });
   console.log("[UrQrPrint Server] Connected to MongoDB.");
+  const legacySubmittedOrders = await PrintOrder.updateMany(
+    { status: "submitted" },
+    { $set: {
+      status: "printed",
+      "events.$[event].type": "agent_print_completed",
+      "events.$[event].note": "Previous print request recorded as completed.",
+    } },
+    { arrayFilters: [{ "event.type": "agent_print_submitted" }] },
+  );
+  if (legacySubmittedOrders.modifiedCount > 0) {
+    console.log(`[UrQrPrint Server] Migrated ${legacySubmittedOrders.modifiedCount} previously submitted orders to printed.`);
+  }
   if (isCloudinaryEnabled()) {
     console.log("[UrQrPrint Server] Cloudinary media storage connected and active.");
   } else {

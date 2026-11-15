@@ -16,6 +16,7 @@ const eventSchema = z.object({
         amount: z.number().int().positive(),
         currency: z.string(),
         status: z.string(),
+        method: z.string().optional(),
       }).passthrough(),
     }).optional(),
   }).optional(),
@@ -61,6 +62,7 @@ razorpayWebhookRouter.post("/", async (request: Request, response: Response, nex
       paymentId: payment.id,
       amount: payment.amount,
       currency: payment.currency,
+      method: payment.method,
     });
     const subscriptionResult = await activateCapturedSubscription({
       orderId: payment.order_id,

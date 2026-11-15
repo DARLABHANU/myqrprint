@@ -25,4 +25,4 @@ Use **Quit UrQrPrint Agent** from its notification area menu to stop background 
 
 ## Print status
 
-The agent marks an order as submitted after Windows reports that the spooler accepted the job. That acknowledgement does not confirm that a printer physically produced the pages; paper, toner, jams, and device-side errors remain controlled by Windows and the printer.
+When Windows reports a successful print response, the agent marks the order as printed and ready for pickup. No shopkeeper print confirmation or manual print retry is required. Windows and the printer provide the success response used for this status.

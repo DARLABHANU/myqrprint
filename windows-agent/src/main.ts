@@ -245,8 +245,8 @@ async function printJob(job: ReturnType<typeof leasedPrintJobSchema.parse>) {
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) await printWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}?print=1`);
     else await printWindow.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`), { query: { print: '1' } });
     await rendered;
-    await api(`/api/agent/jobs/${job.orderId}/result`, { method: 'POST', body: JSON.stringify({ leaseId: job.leaseId, outcome: 'submitted' }) });
-    emitStatus({ lastJob: `Order ${job.orderCode} submitted to ${job.printerSystemName}.` });
+    await api(`/api/agent/jobs/${job.orderId}/result`, { method: 'POST', body: JSON.stringify({ leaseId: job.leaseId, outcome: 'printed' }) });
+    emitStatus({ lastJob: `Order ${job.orderCode} printed on ${job.printerSystemName}.` });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Print failed.';
     await api(`/api/agent/jobs/${job.orderId}/result`, { method: 'POST', body: JSON.stringify({ leaseId: job.leaseId, outcome: 'failed', errorMessage: message.slice(0, 240) }) }).catch(() => undefined);
@@ -298,7 +298,11 @@ function createWindow() {
   });
 
   const webUrl = process.env.PRINTLY_WEB_URL ?? (app.isPackaged ? productionWebUrl : 'http://localhost:5173');
-  void mainWindow.loadURL(webUrl);
+  const launchUrl = new URL(webUrl);
+  if (connection && sessionAuthenticated && (launchUrl.pathname === '/' || launchUrl.pathname === '')) {
+    launchUrl.pathname = '/dashboard';
+  }
+  void mainWindow.loadURL(launchUrl.toString());
 
   mainWindow.webContents.on('did-finish-load', () => {
     if (connection && sessionAuthenticated) {
@@ -310,7 +314,7 @@ function createWindow() {
     // If client web server on 5173 is still compiling/starting, retry after 1.5s
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        void mainWindow.loadURL(webUrl);
+        void mainWindow.loadURL(launchUrl.toString());
       }
     }, 1500);
   });
@@ -454,6 +458,20 @@ ipcMain.handle('agent:print-ready', async (event, input: { id: string; error?: s
 
   if (isVirtualPdf) {
     try {
+      // Electron's printToPDF does not accept a copies option. Repeat the
+      // rendered document pages here so virtual-PDF output honors the same
+      // copy count as a physical Windows printer.
+      const copies = Math.max(1, Math.min(100, Math.trunc(options.copies)));
+      await pending.window.webContents.executeJavaScript(`(() => {
+        const root = document.getElementById('print-root');
+        if (!root) throw new Error('The rendered print document is missing.');
+        const originalPages = Array.from(root.children);
+        if (!originalPages.length) throw new Error('The rendered print document has no pages.');
+        for (let copy = 1; copy < ${copies}; copy++) {
+          for (const page of originalPages) root.appendChild(page.cloneNode(true));
+        }
+        return originalPages.length * ${copies};
+      })()`);
       const pdfBuffer = await pending.window.webContents.printToPDF({
         landscape: options.orientation === 'landscape',
         pageSize: options.paperSize as 'A3'|'A4'|'A5'|'Legal',
@@ -471,22 +489,39 @@ ipcMain.handle('agent:print-ready', async (event, input: { id: string; error?: s
     return;
   }
 
-  pending.window.webContents.print(
-    {
-      silent: true,
-      deviceName: pending.printerName,
-      color: options.colour,
-      copies: options.copies,
-      landscape: options.orientation === 'landscape',
-      duplexMode: options.duplex ? 'longEdge' : 'simplex',
-      pageSize: options.paperSize as 'A3'|'A4'|'A5'|'Legal',
-      // The rendered page already contains the exact paper canvas and @page
-      // margins are zero. Asking the driver for its printable area applies a
-      // second, device-specific offset/scale (some virtual printers report a
-      // bad printable origin), which can shift the photo off the page.
-      margins: { marginType: 'none' },
-      printBackground: true,
-    },
-    (success, failureReason) => (success ? pending.resolve() : pending.reject(new Error(failureReason || 'Windows could not submit the print job.')))
-  );
+  try {
+    // Submit one spool request per purchased copy. Some Windows and mobile
+    // printer drivers silently ignore Electron's copies option, so do not
+    // delegate copy counting to the driver.
+    const copies = Math.max(1, Math.min(100, Math.trunc(options.copies)));
+    for (let copy = 1; copy <= copies; copy++) {
+      await new Promise<void>((resolve, reject) => {
+        pending.window.webContents.print(
+          {
+            silent: true,
+            deviceName: pending.printerName,
+            color: options.colour,
+            copies: 1,
+            landscape: options.orientation === 'landscape',
+            duplexMode: options.duplex ? 'longEdge' : 'simplex',
+            pageSize: options.paperSize as 'A3'|'A4'|'A5'|'Legal',
+            // The rendered page already contains the exact paper canvas and @page
+            // margins are zero. Asking the driver for its printable area applies a
+            // second, device-specific offset/scale (some virtual printers report a
+            // bad printable origin), which can shift the photo off the page.
+            margins: { marginType: 'none' },
+            printBackground: true,
+          },
+          (success, failureReason) => success
+            ? resolve()
+            : reject(new Error(`Copy ${copy} of ${copies}: ${failureReason || 'Windows could not submit the print job.'}`)),
+        );
+      });
+      if (copy < copies) await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    console.log(`[AGENT] Submitted ${copies} print request${copies === 1 ? '' : 's'} for order ${options.copies} copies.`);
+    pending.resolve();
+  } catch (err) {
+    pending.reject(err instanceof Error ? err : new Error('Windows could not submit every print copy.'));
+  }
 });

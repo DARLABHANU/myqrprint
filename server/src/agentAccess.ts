@@ -14,7 +14,7 @@ export async function requireDesktopAgent(request: Request, response: Response, 
   try {
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const [agent, shop] = await Promise.all([
-      AgentDevice.findOne({ tokenHash, status: { $ne: "revoked" }, tokenExpiresAt: { $gt: new Date() } }).select("shopId"),
+      AgentDevice.findOne({ tokenHash, status: { $ne: "revoked" } }).select("shopId"),
       Shop.findOne({ ownerId: userId }).select("_id"),
     ]);
     if (!agent || !shop || String(agent.shopId) !== String(shop._id)) {

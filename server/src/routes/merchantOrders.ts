@@ -16,7 +16,7 @@ export const merchantOrdersRouter = Router();
 
 const uploadDirectory = join(process.cwd(), "data", "uploads");
 const actionSchema = z.object({
-  action: z.enum(["confirm_payment", "approve_order", "mark_ready", "requeue", "reject", "cancel"]),
+  action: z.enum(["confirm_payment", "approve_order", "reject", "cancel"]),
   note: z.string().trim().max(300).optional(),
 }).strict();
 const optionsSchema = z.object({
@@ -62,6 +62,7 @@ function orderSummary(order: InstanceType<typeof PrintOrder>, availableUploads: 
     code: order.publicCode,
     status: order.status,
     paymentMethod: order.paymentMethod,
+    paymentChannel: order.paymentChannel,
     paymentStatus: order.paymentStatus,
     paymentClaimedAt: order.paymentClaimedAt,
     paymentReference: order.paymentReference,
@@ -174,10 +175,6 @@ merchantOrdersRouter.patch("/orders/:orderId", requireDesktopAgent, async (reque
           : undefined,
     });
     await order.save();
-    if (parsedBody.data.action === "requeue") {
-      const expiresAt = new Date(Date.now() + Number(shop.fileRetentionHours ?? 24) * 60 * 60 * 1000);
-      await CustomerUpload.updateMany({ orderId: order._id, state: "attached" }, { $set: { expiresAt } });
-    }
     const availableUploads = await CustomerUpload.find({
       _id: { $in: order.files.map((file) => file.uploadId) },
       shopId: shop._id,

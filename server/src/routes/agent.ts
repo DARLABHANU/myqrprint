@@ -15,12 +15,12 @@ import { Shop } from "../models/Shop.js";
 import { ShopPrinter } from "../models/ShopPrinter.js";
 import { pipeCloudinaryStream } from "../services/cloudinary.js";
 import { requireDesktopAgent } from "../agentAccess.js";
+import { statusForAgentPrintOutcome } from "../orderWorkflow.js";
 
 export const agentRouter = Router();
 const authenticatedAgentRouter = Router();
 const shopOwnerRouter = Router();
 const uploadDirectory = join(process.cwd(), "data", "uploads");
-const accessTokenLifetimeMs = 90 * 24 * 60 * 60 * 1000;
 const printLeaseMs = 10 * 60 * 1000;
 const onlineWindowMs = 5 * 60 * 1000;
 
@@ -62,7 +62,6 @@ async function requireAgent(request: Request, response: Response, next: NextFunc
     const agent = await AgentDevice.findOne({
       tokenHash: hashSecret(match[1]),
       status: { $ne: "revoked" },
-      tokenExpiresAt: { $gt: new Date() },
     });
     if (!agent) {
       response.status(401).json({ error: "The computer connection expired or was revoked. Sign in again in the desktop app." });
@@ -82,12 +81,11 @@ shopOwnerRouter.post("/connect", requireShopOwner, connectionLimiter, async (req
     if (!shop) { response.status(404).json({ error: "No shop is linked to this account." }); return; }
 
     const accessToken = randomBytes(48).toString("base64url");
-    const tokenExpiresAt = new Date(now.getTime() + accessTokenLifetimeMs);
     let agent = await AgentDevice.findOne({ shopId: shop._id, deviceName: parsed.data.deviceName });
     if (agent) {
       agent.agentVersion = parsed.data.agentVersion;
       agent.tokenHash = hashSecret(accessToken);
-      agent.tokenExpiresAt = tokenExpiresAt;
+      agent.tokenExpiresAt = undefined;
       agent.status = "online";
       agent.lastSeenAt = now;
       agent.revokedAt = undefined;
@@ -98,7 +96,6 @@ shopOwnerRouter.post("/connect", requireShopOwner, connectionLimiter, async (req
         deviceName: parsed.data.deviceName,
         agentVersion: parsed.data.agentVersion,
         tokenHash: hashSecret(accessToken),
-        tokenExpiresAt,
         status: "online",
         lastSeenAt: now,
       });
@@ -116,7 +113,6 @@ shopOwnerRouter.post("/connect", requireShopOwner, connectionLimiter, async (req
       deviceId: String(agent._id),
       deviceName: agent.deviceName,
       accessToken,
-      tokenExpiresAt: tokenExpiresAt.toISOString(),
       shop: { id: String(shop._id), displayName: shop.displayName },
     });
   } catch (error) { next(error); }
@@ -336,13 +332,14 @@ authenticatedAgentRouter.post("/jobs/:orderId/result", async (request, response,
     if (!order) { response.status(409).json({ error: "This print attempt expired or has already been reported." }); return; }
     const shop = await Shop.findById(agent.shopId).select("fileRetentionHours");
     if (!shop) { response.status(404).json({ error: "Shop settings were not found." }); return; }
-    order.status = parsed.data.outcome;
+    const printSucceeded = parsed.data.outcome !== "failed";
+    order.status = statusForAgentPrintOutcome(parsed.data.outcome);
     order.agentLeaseId = undefined;
     order.agentLeaseExpiresAt = undefined;
-    const detail = parsed.data.outcome === "submitted"
-      ? `Windows accepted the job into the print queue on attempt ${order.printAttempts}. Confirm the paper came out before marking ready.`
+    const detail = printSucceeded
+      ? `Windows reported the print job completed on attempt ${order.printAttempts}.`
       : (parsed.data.errorMessage ?? "The Windows printer reported an error.").slice(0, 240);
-    order.events.push({ type: parsed.data.outcome === "submitted" ? "agent_print_submitted" : "agent_print_failed", actorType: "system", timestamp: now, note: detail });
+    order.events.push({ type: printSucceeded ? "agent_print_completed" : "agent_print_failed", actorType: "system", timestamp: now, note: detail });
     await order.save();
     await CustomerUpload.updateMany(
       { _id: { $in: order.files.map((file) => file.uploadId) }, orderId: order._id, state: "attached" },

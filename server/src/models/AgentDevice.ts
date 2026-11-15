@@ -5,7 +5,9 @@ const agentDeviceSchema = new Schema({
   deviceName: { type: String, required: true, trim: true, maxlength: 120 },
   agentVersion: { type: String, required: true, trim: true, maxlength: 40 },
   tokenHash: { type: String, required: true, unique: true, select: false },
-  tokenExpiresAt: { type: Date, required: true, index: true },
+  // Agent credentials remain valid until the owner explicitly signs out or
+  // revokes the device. The token itself is stored encrypted on the desktop.
+  tokenExpiresAt: { type: Date, index: true },
   status: { type: String, enum: ["online", "offline", "revoked"], default: "offline", required: true, index: true },
   lastSeenAt: { type: Date },
   revokedAt: { type: Date },

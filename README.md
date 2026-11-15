@@ -48,9 +48,9 @@ server-priced order, select direct UPI, cash (when enabled), or Razorpay test ch
 pickup code. The customer can report a UPI payment, but that report is not proof
 of payment; the shopkeeper must check and confirm receipt. Shopkeepers can
 review and search orders, edit unpaid order options, download available private
-files, confirm payments, approve paid orders for manual fulfillment, reject or
-cancel eligible orders, and mark fulfilled orders ready for pickup. Files are
-deleted according to order completion and the shop's configured retention
+files, confirm payments, approve paid orders for printing, and reject or cancel
+eligible orders. The desktop agent updates successful print jobs to ready for
+pickup automatically. Files are deleted according to order completion and the shop's configured retention
 period. Customers can check order status with their session and pickup code.
 Shopkeepers can configure their profile, QR poster, pricing, discounts,
 customer fields, location lock, notifications, and payment methods.

@@ -6,7 +6,6 @@ import {
   LoaderCircle,
   Printer,
   RefreshCw,
-  RotateCcw,
   Settings2,
   X,
 } from "lucide-react";
@@ -65,8 +64,8 @@ type ShopInfo = {
   notificationPreferences?: { newOrder: boolean; printFailed: boolean; uploadSound: boolean; dailyEmail: boolean };
 };
 type OrderOptions = MerchantOrder["options"];
-type Action = "confirm_payment" | "approve_order" | "mark_ready" | "requeue" | "reject" | "cancel";
-type Filter = "all" | "payment" | "approval" | "queue" | "printing" | "submitted" | "cash" | "printed" | "failed";
+type Action = "confirm_payment" | "approve_order" | "reject" | "cancel";
+type Filter = "all" | "payment" | "approval" | "queue" | "printing" | "cash" | "printed" | "failed";
 
 const photoLayouts = [
   { value: "single", label: "1 photo per page" },
@@ -81,11 +80,11 @@ const statusLabels: Record<OrderStatus, string> = {
   awaiting_payment: "Payment pending",
   awaiting_cash: "Cash due at counter",
   needs_approval: "Needs approval",
-  queued: "Awaiting manual fulfillment",
-  printing: "Legacy print status",
-  submitted: "Sent to printer · confirm paper",
+  queued: "Print queue",
+  printing: "Printing",
+  submitted: "Ready for pickup",
   printed: "Ready for pickup",
-  failed: "Previous fulfillment issue",
+  failed: "Print failed",
   rejected: "Rejected",
   cancelled: "Cancelled",
   expired: "Expired",
@@ -95,9 +94,8 @@ const filterLabels: Array<{ id: Filter; label: string }> = [
   { id: "all", label: "All" },
   { id: "payment", label: "Awaiting payment" },
   { id: "approval", label: "Needs approval" },
-  { id: "queue", label: "Manual fulfillment" },
-  { id: "printing", label: "Legacy status" },
-  { id: "submitted", label: "Sent to printer" },
+  { id: "queue", label: "Print queue" },
+  { id: "printing", label: "Printing" },
   { id: "cash", label: "Awaiting cash" },
   { id: "printed", label: "Printed" },
   { id: "failed", label: "Failed" },
@@ -126,12 +124,10 @@ function visibleInFilter(order: MerchantOrder, filter: Filter): boolean {
       return order.status === "queued";
     case "printing":
       return order.status === "printing";
-    case "submitted":
-      return order.status === "submitted";
     case "cash":
       return order.status === "awaiting_cash";
     case "printed":
-      return order.status === "printed";
+      return order.status === "printed" || order.status === "submitted";
     case "failed":
       return order.status === "failed";
   }
@@ -155,20 +151,16 @@ function availableActions(order: MerchantOrder): Array<{ action: Action; label: 
       ];
     case "needs_approval":
       return [
-        { action: "approve_order", label: "Approve for manual fulfillment", primary: true },
+        { action: "approve_order", label: "Approve for printing", primary: true },
         { action: "reject", label: "Reject order" },
         { action: "cancel", label: "Cancel order" },
       ];
     case "queued":
-      return [{ action: "mark_ready", label: "Mark ready for pickup", primary: true }, { action: "cancel", label: "Cancel order" }];
     case "printing":
-      return [
-        { action: "mark_ready", label: "Confirm paper came out", primary: true },
-      ];
     case "submitted":
-      return [{ action: "mark_ready", label: "Confirm printed / ready for pickup", primary: true }, { action: "requeue", label: "Retry print", primary: true }];
+      return order.status === "queued" ? [{ action: "cancel", label: "Cancel order" }] : [];
     case "failed":
-      return [{ action: "requeue", label: "Retry print", primary: true }, { action: "cancel", label: "Cancel order" }];
+      return [{ action: "cancel", label: "Cancel order" }];
     default:
       return [];
   }
@@ -247,17 +239,12 @@ export function OrderManagementPage() {
     approval: orders.filter((order) => order.status === "needs_approval").length,
     queue: orders.filter((order) => order.status === "queued").length,
     printing: orders.filter((order) => order.status === "printing").length,
-    submitted: orders.filter((order) => order.status === "submitted").length,
     cash: orders.filter((order) => order.status === "awaiting_cash").length,
-    printed: orders.filter((order) => order.status === "printed").length,
+    printed: orders.filter((order) => order.status === "printed" || order.status === "submitted").length,
     failed: orders.filter((order) => order.status === "failed").length,
   }), [orders]);
 
   async function updateOrder(order: MerchantOrder, action: Action) {
-    if (action === "requeue" && order.status === "submitted") {
-      const confirmed = window.confirm("Windows accepted the first print job, but paper output was not verified. Retry only after checking the printer queue; the first attempt may still print and create a duplicate.");
-      if (!confirmed) return;
-    }
     if ((action === "reject" || action === "cancel") && order.paymentStatus === "paid") {
       const confirmed = window.confirm("This order's payment is already confirmed. This action will not refund it. Continue only if you will arrange any refund directly with the customer.");
       if (!confirmed) return;
@@ -276,9 +263,9 @@ export function OrderManagementPage() {
       const result = await response.json() as { order: MerchantOrder };
       setOrders((current) => current.map((item) => item.id === order.id ? result.order : item));
       setNotice(action === "confirm_payment"
-        ? "Payment confirmed manually. Review the order and approve it for manual fulfillment."
+        ? "Payment confirmed manually. Review the order and approve it for printing."
         : action === "approve_order"
-          ? "Order approved for manual fulfillment."
+          ? "Order approved for printing."
           : "Order status updated.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not update this order.");
@@ -401,7 +388,7 @@ export function OrderManagementPage() {
                   </div>
                   <div className="merchant-order-actions">
                     {availableActions(order).map(({ action, label, primary }) => <button key={action} type="button" className={primary ? "primary" : action === "reject" || action === "cancel" ? "danger" : ""} disabled={busyOrderId === order.id} onClick={() => void updateOrder(order, action)}>
-                      {busyOrderId === order.id ? <LoaderCircle className="spin" size={14} /> : action === "requeue" ? <RotateCcw size={14} /> : action === "reject" ? <X size={14} /> : action === "mark_ready" || action === "confirm_payment" ? <Check size={14} /> : <Printer size={14} />}
+                      {busyOrderId === order.id ? <LoaderCircle className="spin" size={14} /> : action === "reject" ? <X size={14} /> : action === "confirm_payment" ? <Check size={14} /> : <Printer size={14} />}
                       {label}
                     </button>)}
                   </div>

@@ -3,7 +3,7 @@ import test from "node:test";
 import { calculateCustomerQuote } from "./customerOrder.js";
 import { CustomerUpload } from "./models/CustomerUpload.js";
 import { Shop } from "./models/Shop.js";
-import { transitionMerchantOrder } from "./orderWorkflow.js";
+import { statusForAgentPrintOutcome, transitionMerchantOrder } from "./orderWorkflow.js";
 import { calculateQuote } from "./pricing.js";
 
 function makeShop() {
@@ -114,7 +114,7 @@ test("cash orders enter the print queue only after the shop confirms cash", () =
   assert.deepEqual(result, { status: "queued", paymentMethod: "cash", paymentStatus: "paid" });
 });
 
-test("merchant approves a paid order for manual fulfillment", () => {
+test("merchant approves a paid order for printing", () => {
   const approved = transitionMerchantOrder({
     status: "needs_approval",
     paymentMethod: "upi",
@@ -123,32 +123,8 @@ test("merchant approves a paid order for manual fulfillment", () => {
   assert.equal(approved.status, "queued");
 });
 
-test("merchant cannot mark an unpaid order ready for pickup", () => {
-  assert.throws(
-    () => transitionMerchantOrder({
-      status: "awaiting_cash",
-      paymentMethod: "cash",
-      paymentStatus: "awaiting_cash",
-    }, "mark_ready"),
-    /Only a paid order in the print workflow/,
-  );
-});
-
-test("shopkeeper can retry a paid failed print without discarding its order", () => {
-  const retry = transitionMerchantOrder({ status: "failed", paymentMethod: "cash", paymentStatus: "paid" }, "requeue");
-  assert.equal(retry.status, "queued");
-});
-
-test("shopkeeper can retry a submitted print that did not produce paper", () => {
-  const retry = transitionMerchantOrder({ status: "submitted", paymentMethod: "upi", paymentStatus: "paid" }, "requeue");
-  assert.equal(retry.status, "queued");
-});
-
-test("merchant moves a paid order from manual fulfillment to ready for pickup", () => {
-  const ready = transitionMerchantOrder({
-    status: "queued",
-    paymentMethod: "cash",
-    paymentStatus: "paid",
-  }, "mark_ready");
-  assert.equal(ready.status, "printed");
+test("successful agent print responses move orders straight to pickup", () => {
+  assert.equal(statusForAgentPrintOutcome("printed"), "printed");
+  assert.equal(statusForAgentPrintOutcome("submitted"), "printed");
+  assert.equal(statusForAgentPrintOutcome("failed"), "failed");
 });

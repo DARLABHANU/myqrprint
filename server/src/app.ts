@@ -5,6 +5,9 @@ import session from "express-session";
 import helmet from "helmet";
 import MongoStore from "connect-mongo";
 import mongoose from "mongoose";
+import { createHash } from "node:crypto";
+import { AgentDevice } from "./models/AgentDevice.js";
+import { Shop } from "./models/Shop.js";
 import { agentRouter } from "./routes/agent.js";
 import { authRouter } from "./routes/auth.js";
 import { merchantOrdersRouter } from "./routes/merchantOrders.js";
@@ -97,13 +100,32 @@ app.use(
       httpOnly: true,
       sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
       secure: process.env.NODE_ENV === "production",
-      // Keep shop owners signed in across browser and desktop-agent restarts.
-      // Rolling expiry renews this window while the account is actively used.
-      maxAge: 1000 * 60 * 60 * 24 * 30,
+      // Keep shop owners signed in across desktop-agent restarts and long idle
+      // periods. Browsers cap persistent cookies at about 400 days; rolling
+      // expiry renews this window whenever the account is used.
+      maxAge: 1000 * 60 * 60 * 24 * 400,
     },
     rolling: true,
   }),
 );
+
+// A connected desktop agent has its own encrypted, revocable credential. Use
+// it to restore the embedded dashboard's web session after a cookie expires,
+// so closing the app or leaving the PC unused does not force another login.
+app.use("/api", async (request, _response, next) => {
+  if (request.session.userId) { next(); return; }
+  const token = request.get("x-printly-agent-token") ?? "";
+  if (!/^[A-Za-z0-9_-]{40,160}$/.test(token)) { next(); return; }
+  try {
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const agent = await AgentDevice.findOne({ tokenHash, status: { $ne: "revoked" } }).select("shopId");
+    if (!agent) { next(); return; }
+    const shop = await Shop.findById(agent.shopId).select("ownerId");
+    if (!shop?.ownerId) { next(); return; }
+    request.session.userId = String(shop.ownerId);
+    request.session.save((error) => error ? next(error) : next());
+  } catch (error) { next(error); }
+});
 
 app.use((request, response, next) => {
   if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
