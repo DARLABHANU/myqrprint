@@ -357,7 +357,7 @@ const pageContent: Record<string, MarketingPage> = {
     category: "contact",
     sections: [
       { title: "Customer order support", body: "Use the contact details on the shop's public order page for payment, pickup, or order-status questions." },
-      { title: "Platform support", body: "The platform support email address and phone number have not been supplied for publication yet. The operator must add monitored business contact details here before Razorpay review or public customer payments." },
+      { title: "Platform support", body: "UrQrPrint is operated by Daarla Bhanumurthy. Email: appzonux@gmail.com. Phone: +91 75693 59717. Business address: Block 5, Lankelapalem, Paravada Mandal, Anakapalle District, Andhra Pradesh 531019, India." },
       { title: "Shop-owner support", body: "Shop owners can also review setup guidance and Help & support in their dashboard." },
     ],
   },
@@ -427,7 +427,7 @@ const pageContent: Record<string, MarketingPage> = {
       { title: "How to request a refund", body: "Contact platform support with the order code, Razorpay payment ID or receipt, payment date and amount, and a short explanation. Do not send full card numbers, CVV, OTPs, or banking passwords. Refunds are not automatic when an order is cancelled in the dashboard. If approved, the refund is initiated through the payment provider to the original payment method; posting time depends on the provider and the customer’s bank." },
       { title: "Cash orders and reprints", body: "Cash is collected by the selected shop, not UrQrPrint. Contact that shop to request a cash refund or reprint. UrQrPrint cannot return cash it did not collect." },
       { title: "Shop subscriptions", body: "Subscription payments and activation are separate from customer print orders. Contact platform support with the plan request and payment reference if a subscription payment was duplicated, not recorded, or the plan was not activated. Any approved refund is returned through the original payment route where available." },
-      { title: "Contact and legal rights", body: "Use the platform support details on the Contact page for online payment and subscription requests, and the shop contact shown on the order page for cash or fulfillment issues. Nothing in this policy limits rights that cannot be excluded under applicable law." },
+      { title: "Contact and legal rights", body: "For online payment and subscription requests, email appzonux@gmail.com or call +91 75693 59717. For cash or fulfillment issues, contact the shop shown on the order page. Nothing in this policy limits rights that cannot be excluded under applicable law." },
     ],
   },
   "/delivery-policy": {
@@ -788,6 +788,8 @@ export function PublicMarketingPages({ path }: { path: string }) {
                     ) : null}
                     {page.category === "contact" ? (
                       <div className="public-contact-actions">
+                        <a className="button button-dark" href="mailto:appzonux@gmail.com">Email platform support <ArrowRight size={15} /></a>
+                        <a className="button button-secondary" href="tel:+917569359717">Call +91 75693 59717</a>
                         <a className="button button-dark" href="/dashboard/support">Shop support <ArrowRight size={15} /></a>
                         <a className="button button-secondary" href="/register">Set up a shop</a>
                       </div>
