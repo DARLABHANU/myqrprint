@@ -18,7 +18,7 @@ import { CustomerUpload } from "../models/CustomerUpload.js";
 import { AgentDevice } from "../models/AgentDevice.js";
 import { PrintOrder } from "../models/PrintOrder.js";
 import { Shop } from "../models/Shop.js";
-import { captureRazorpayPayment, createRazorpayOrder, fetchRazorpayPayment, getRazorpayMode, isRazorpayEnabled, markRazorpayPaymentCaptured, razorpayPublicKeyId, verifyCheckoutSignature } from "../services/razorpay.js";
+import { captureRazorpayPayment, createRazorpayOrder, fetchRazorpayPayment, getRazorpayMode, isRazorpayEnabled, markRazorpayPaymentCaptured, RazorpayApiError, razorpayPublicKeyId, verifyCheckoutSignature } from "../services/razorpay.js";
 import {
   deleteFromCloudinary,
   isCloudinaryEnabled,
@@ -724,6 +724,10 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
         return;
       }
       response.status(409).json({ error: "This order request was already received." });
+      return;
+    }
+    if (error instanceof RazorpayApiError) {
+      response.status(error.statusCode === 401 ? 503 : 502).json({ error: error.message });
       return;
     }
     if (error instanceof Error && !("name" in error && error.name === "MongoServerError")) {

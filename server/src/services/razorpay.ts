@@ -5,6 +5,13 @@ import { Shop } from "../models/Shop.js";
 const razorpayApi = "https://api.razorpay.com/v1";
 export type RazorpayMode = "test" | "live";
 
+export class RazorpayApiError extends Error {
+  constructor(readonly statusCode: number, message: string) {
+    super(message);
+    this.name = "RazorpayApiError";
+  }
+}
+
 export type RazorpayOrder = {
   id: string;
   amount: number;
@@ -56,7 +63,12 @@ async function razorpayRequest<T>(path: string, init: RequestInit = {}): Promise
   const body = await response.json().catch(() => ({})) as { error?: { description?: string } } & T;
   if (!response.ok) {
     console.error("Razorpay API request failed:", response.status, body.error?.description ?? "No error detail.");
-    throw new Error("Razorpay could not process this payment. Please try again.");
+    throw new RazorpayApiError(
+      response.status,
+      response.status === 401
+        ? "Online payments are temporarily unavailable. The shop owner must verify the live Razorpay API credentials."
+        : "Razorpay could not create the payment order. Please try again later.",
+    );
   }
   return body;
 }
