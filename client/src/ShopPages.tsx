@@ -70,7 +70,7 @@ export function ShopSupportPage() {
 }
 
 export function ShopWalletPage() {
-  type SettlementRow = { _id: string; dateKey: string; amountPaise: number; orderCount: number; status: "pending" | "sent" | "received"; transferReference?: string; sentAt?: string; receivedAt?: string; upiId: string };
+  type SettlementRow = { _id: string; dateKey: string; amountPaise: number; orderCount: number; status: "pending" | "sent" | "received"; paymentMode?: "test" | "live"; transferReference?: string; sentAt?: string; receivedAt?: string; upiId: string };
   const [rows, setRows] = useState<SettlementRow[]>([]);
   const [upiId, setUpiId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -91,23 +91,27 @@ export function ShopWalletPage() {
   useEffect(() => { void load(); }, [load]);
 
   async function confirmReceived(row: SettlementRow) {
-    if (!window.confirm(`Confirm that you received ₹${(row.amountPaise / 100).toFixed(2)} for ${row.dateKey}?`)) return;
+    const simulation = row.paymentMode !== "live";
+    const confirmMessage = simulation
+      ? `Confirm the simulated receipt of ₹${(row.amountPaise / 100).toFixed(2)} for ${row.dateKey}? This is a test only; no money was transferred.`
+      : `Confirm that you received ₹${(row.amountPaise / 100).toFixed(2)} for ${row.dateKey}?`;
+    if (!window.confirm(confirmMessage)) return;
     setBusyId(row._id); setError(""); setNotice("");
     try {
       const response = await fetch(`/api/shops/settlements/${row._id}/confirm-received`, { method: "POST", credentials: "same-origin" });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not confirm the settlement receipt.");
-      setNotice(`Receipt confirmed for ₹${(row.amountPaise / 100).toFixed(2)}.`);
+      setNotice(simulation ? `Simulated receipt confirmed for ₹${(row.amountPaise / 100).toFixed(2)}. No money was transferred.` : `Receipt confirmed for ₹${(row.amountPaise / 100).toFixed(2)}.`);
       await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not confirm the settlement receipt."); }
     finally { setBusyId(""); }
   }
   return <div className="workspace-page"><main className="settings-main wallet-management-main">
-    <div className="wallet-page-heading"><div><small>SHOP PAYOUTS</small><h1>Daily settlements</h1><p>Admin records the daily transfer. Confirm here after the money reaches your account.</p></div><button className="wallet-view-payments" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15}/> Refresh</button></div>
+    <div className="wallet-page-heading"><div><small>SHOP PAYOUTS</small><h1>Daily settlements</h1><p>Review daily settlement requests and confirm receipt after the admin records a transfer.</p></div><button className="wallet-view-payments" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15}/> Refresh</button></div>
     {error && <div className="form-alert" role="alert">{error}</div>}{notice && <div className="settlement-notice"><Check size={15}/>{notice}</div>}
     <div className="settlement-shop-info"><Wallet size={17}/><span>Settlement destination UPI ID</span><b>{upiId || "Not set — add one in Payment setting"}</b>{!upiId && <a href="/dashboard/setting/payment">Open Payment setting <ArrowRight size={13}/></a>}</div>
     <section className="settings-card settlement-shop-history"><header className="wallet-card-heading"><div><h2>Settlement history</h2><p>Only captured Razorpay customer payments are included. Amounts shown are gross, before any gateway charges.</p></div><small>{rows.length} record{rows.length === 1 ? "" : "s"}</small></header>
-      {loading ? <div className="wallet-history-empty">Loading your settlement history…</div> : rows.length === 0 ? <div className="wallet-history-empty"><Wallet size={24}/><b>No daily settlement requests yet</b><span>Settlements appear after a day with captured Razorpay payments closes.</span></div> : <div className="settlement-shop-list">{rows.map((row) => <article key={row._id} className="settlement-shop-row"><div className="settlement-shop-row-top"><div><small>Business date</small><b>{new Date(`${row.dateKey}T00:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</b><span>{row.orderCount} captured Razorpay order{row.orderCount === 1 ? "" : "s"}</span></div><span className={`settlement-status ${row.status}`}>{row.status === "pending" ? "Admin transfer pending" : row.status === "sent" ? "Payment sent · confirm receipt" : "Payment received"}</span></div><div className="settlement-shop-row-bottom"><b>₹{(row.amountPaise / 100).toFixed(2)}</b>{row.status === "sent" && <div><small>UTR / transfer reference: <b>{row.transferReference || "Not provided"}</b></small><button type="button" disabled={busyId === row._id} onClick={() => void confirmReceived(row)}><Check size={14}/>{busyId === row._id ? "Saving…" : "Confirm payment received"}</button></div>}{row.status === "pending" && <small>Waiting for the admin to transfer this amount.</small>}{row.status === "received" && <small>Confirmed on {row.receivedAt ? new Date(row.receivedAt).toLocaleString() : "—"}</small>}</div></article>)}</div>}
+      {loading ? <div className="wallet-history-empty">Loading your settlement history…</div> : rows.length === 0 ? <div className="wallet-history-empty"><Wallet size={24}/><b>No daily settlement requests yet</b><span>Settlements appear after a day with captured Razorpay payments closes.</span></div> : <div className="settlement-shop-list">{rows.map((row) => { const simulation = row.paymentMode !== "live"; return <article key={row._id} className="settlement-shop-row"><div className="settlement-shop-row-top"><div><small>Business date</small><b>{new Date(`${row.dateKey}T00:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</b><span>{row.orderCount} captured Razorpay order{row.orderCount === 1 ? "" : "s"}</span></div><span className={`settlement-status ${simulation ? "test" : row.status}`}>{simulation ? row.status === "pending" ? "Test mode · no real funds" : row.status === "sent" ? "Simulated · confirm receipt" : "Simulation confirmed" : row.status === "pending" ? "Admin transfer pending" : row.status === "sent" ? "Payment sent · confirm receipt" : "Payment received"}</span></div><div className="settlement-shop-row-bottom"><b>₹{(row.amountPaise / 100).toFixed(2)}</b>{row.status === "sent" && <div><small>{simulation ? "Simulation reference · not a bank UTR:" : "UTR / transfer reference:"} <b>{row.transferReference || "Not provided"}</b>{simulation && <span> No money moved.</span>}</small><button type="button" disabled={busyId === row._id} onClick={() => void confirmReceived(row)}><Check size={14}/>{busyId === row._id ? "Saving…" : simulation ? "Confirm simulated receipt" : "Confirm payment received"}</button></div>}{row.status === "pending" && <small>{simulation ? "Test payment only. No real money was received." : "Waiting for the admin to transfer this amount."}</small>}{row.status === "received" && <small>{simulation ? "Simulated receipt confirmed · no real money moved" : `Confirmed on ${row.receivedAt ? new Date(row.receivedAt).toLocaleString() : "—"}`}</small>}</div></article>; })}</div>}
     </section>
   </main></div>;
 }

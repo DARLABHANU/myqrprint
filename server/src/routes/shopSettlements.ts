@@ -35,6 +35,6 @@ shopSettlementsRouter.post("/:id/confirm-received", async (request, response, ne
       { new: true, runValidators: true },
     );
     if (!settlement) { response.status(409).json({ error: "This transfer is not awaiting your receipt confirmation." }); return; }
-    response.json({ message: "Settlement receipt confirmed.", settlement });
+    response.json({ message: settlement.paymentMode !== "live" ? "Simulated receipt confirmed. No money was transferred." : "Settlement receipt confirmed.", settlement });
   } catch (error) { next(error); }
 });

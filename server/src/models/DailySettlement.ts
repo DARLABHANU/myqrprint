@@ -13,7 +13,7 @@ const dailySettlementSchema = new Schema({
   transferReference: { type: String, maxlength: 40 },
   sentAt: { type: Date },
   sentBy: { type: Schema.Types.ObjectId, ref: "User" },
-  sentByMethod: { type: String, enum: ["private_admin_link"] },
+  sentByMethod: { type: String, enum: ["private_admin_link", "test_simulation"] },
   receivedAt: { type: Date },
   receivedBy: { type: Schema.Types.ObjectId, ref: "User" },
 }, { timestamps: true });

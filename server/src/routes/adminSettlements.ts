@@ -96,7 +96,7 @@ adminSettlementsRouter.get("/", async (request, response, next) => {
 
 adminSettlementsRouter.post("/:id/mark-sent", async (request, response, next) => {
   const id = z.string().refine(isValidObjectId).safeParse(request.params.id);
-  const body = z.object({ transferReference: z.string().trim().min(6).max(40), expectedAmountPaise: z.number().int().positive() }).strict().safeParse(request.body);
+  const body = z.object({ transferReference: z.string().trim().min(6).max(40), expectedAmountPaise: z.number().int().positive(), simulation: z.boolean().optional() }).strict().safeParse(request.body);
   if (!id.success || !body.success) {
     response.status(400).json({ error: "Enter a valid settlement and UPI transfer reference (6–40 characters)." });
     return;
@@ -104,19 +104,24 @@ adminSettlementsRouter.post("/:id/mark-sent", async (request, response, next) =>
   try {
     const pending = await DailySettlement.findById(id.data).select("shopId amountPaise status paymentMode");
     if (!pending || pending.status !== "pending") { response.status(409).json({ error: "This settlement is no longer awaiting payment." }); return; }
-    if (pending.paymentMode === "test" || process.env.RAZORPAY_KEY_ID?.trim().startsWith("rzp_test_")) {
-      response.status(409).json({ error: "This request contains Razorpay test-mode payments. No real money was received, so it cannot be marked as transferred." });
+    const isTestMode = pending.paymentMode !== "live" || process.env.RAZORPAY_KEY_ID?.trim().startsWith("rzp_test_");
+    if (isTestMode && body.data.simulation !== true) {
+      response.status(409).json({ error: "This request contains Razorpay test-mode payments. Use the simulation action; no real money was received." });
+      return;
+    }
+    if (!isTestMode && body.data.simulation === true) {
+      response.status(409).json({ error: "Simulation is only available for test-mode settlements." });
       return;
     }
     if (pending.amountPaise !== body.data.expectedAmountPaise) { response.status(409).json({ error: "The settlement total changed. Refresh the page and verify the current amount before transferring." }); return; }
     const shop = await Shop.findById(pending.shopId).select("upiId");
-    if (!shop?.upiId?.trim()) { response.status(409).json({ error: "Add a UPI ID to this shop before recording its settlement payment." }); return; }
+    if (!isTestMode && !shop?.upiId?.trim()) { response.status(409).json({ error: "Add a UPI ID to this shop before recording its settlement payment." }); return; }
     const settlement = await DailySettlement.findOneAndUpdate(
       { _id: id.data, status: "pending", amountPaise: body.data.expectedAmountPaise },
-      { $set: { status: "sent", transferReference: body.data.transferReference, sentAt: new Date(), sentByMethod: "private_admin_link" } },
+      { $set: { status: "sent", transferReference: body.data.transferReference, sentAt: new Date(), sentByMethod: isTestMode ? "test_simulation" : "private_admin_link" } },
       { new: true, runValidators: true },
     ).populate("shopId", "displayName slug upiId");
     if (!settlement) { response.status(409).json({ error: "This settlement is no longer awaiting payment." }); return; }
-    response.json({ message: "Transfer recorded. The shopkeeper can now confirm receipt.", settlement });
+    response.json({ message: isTestMode ? "Test transfer simulated. No money moved; the shopkeeper can confirm the simulated receipt." : "Transfer recorded. The shopkeeper can now confirm receipt.", settlement });
   } catch (error) { next(error); }
 });
