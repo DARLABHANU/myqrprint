@@ -38,6 +38,7 @@ const printOrderSchema = new Schema(
     paymentReference: { type: String, maxlength: 80 },
     razorpayOrderId: { type: String, maxlength: 64, index: true },
     razorpayPaymentId: { type: String, maxlength: 64, index: true },
+    paymentCapturedAt: { type: Date, index: true },
     assignedPrinterId: { type: Schema.Types.ObjectId, ref: "ShopPrinter" },
     agentDeviceId: { type: Schema.Types.ObjectId, ref: "AgentDevice" },
     agentLeaseId: { type: String, maxlength: 64, index: true },

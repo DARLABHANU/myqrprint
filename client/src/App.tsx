@@ -24,6 +24,7 @@ import { ReportsDashboardPage } from "./ReportsDashboardPage";
 import { PrinterManagementPage } from "./PrinterManagementPage";
 import { AuthFlowPage } from "./AuthFlowPage";
 import { AdminSubscriptionReviewPage, SubscriptionPage } from "./SubscriptionPages";
+import { AdminSettlementsPage } from "./AdminSettlementsPage";
 import { ShopOverviewPage, ShopSupportPage, ShopWalletPage } from "./ShopPages";
 import { ShopDashboardShell } from "./ShopDashboardShell";
 
@@ -98,7 +99,7 @@ export default function App() {
   if (shopSections[path]) return shopPage(<ShopSettingsPage initialSection={shopSections[path]} />);
   if (path === "/dashboard") return shopPage(<ShopOverviewPage />);
   if (path === "/dashboard/support") return shopPage(<ShopSupportPage />);
-  if (path === "/dashboard/wallet" || path === "/dashboard/withdraw") return shopPage(<ShopWalletPage />);
+  if (path === "/dashboard/wallet" || path === "/dashboard/withdraw" || path === "/dashboard/settlements") return shopPage(<ShopWalletPage />);
   if (path === "/dashboard/jobs") return shopPage(<OrderManagementPage />);
   if (path === "/dashboard/setting") return shopPage(<ShopSettingsPage />);
   if (path === "/dashboard/orders") return shopPage(<OrderManagementPage />);
@@ -107,6 +108,7 @@ export default function App() {
   if (path === "/dashboard/printers") return shopPage(<PrinterManagementPage />);
   if (path === "/dashboard/subscription") return shopPage(<SubscriptionPage />);
   if (path === "/admin/subscriptions") return <AdminSubscriptionReviewPage />;
+  if (path === "/admin/settlements") return <AdminSettlementsPage />;
   if (path === "/terms") return <LegalPage kind="terms" />;
   if (path === "/privacy-policy") return <LegalPage kind="privacy" />;
   if (path === "/refund-policy") return <PublicMarketingPages path={path} />;

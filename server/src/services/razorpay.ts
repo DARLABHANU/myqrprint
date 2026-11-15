@@ -131,6 +131,7 @@ export async function markRazorpayPaymentCaptured(input: {
     order.razorpayPaymentId = input.paymentId;
     order.paymentReference = input.paymentId;
     order.paymentStatus = "paid";
+    order.paymentCapturedAt = new Date();
     if (["awaiting_payment", "awaiting_cash"].includes(order.status)) {
       order.status = shop.autoPrint ? "queued" : "needs_approval";
     }

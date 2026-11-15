@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Clock3, CreditCard, Crown, FileText, Printer, Settings, ShieldCheck, Wallet, PlayCircle, Download, MessageCircle, Phone, Mail, Maximize2 } from "lucide-react";
+import { ArrowRight, Clock3, CreditCard, Crown, FileText, Printer, Settings, Wallet, PlayCircle, Download, MessageCircle, Phone, Mail, Maximize2, Check, RefreshCw } from "lucide-react";
+import { useCallback } from "react";
 
 type Order = { id?: string; code: string; status: string; paymentStatus: string; paymentMethod: string; amountPaise: number; createdAt: string; options?: { colour: boolean; copies: number }; files: Array<{ name?: string; pageCount: number }> };
 type Shop = { displayName: string; ownerName?: string; slug: string };
@@ -69,8 +70,44 @@ export function ShopSupportPage() {
 }
 
 export function ShopWalletPage() {
+  type SettlementRow = { _id: string; dateKey: string; amountPaise: number; orderCount: number; status: "pending" | "sent" | "received"; transferReference?: string; sentAt?: string; receivedAt?: string; upiId: string };
+  const [rows, setRows] = useState<SettlementRow[]>([]);
+  const [upiId, setUpiId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const response = await fetch("/api/shops/settlements", { credentials: "same-origin" });
+      const body = await response.json() as { settlements?: SettlementRow[]; upiId?: string; error?: string };
+      if (response.status === 401) { window.location.assign("/login"); return; }
+      if (!response.ok) throw new Error(body.error || "Could not load daily settlements.");
+      setRows(body.settlements ?? []); setUpiId(body.upiId ?? "");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load daily settlements."); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  async function confirmReceived(row: SettlementRow) {
+    if (!window.confirm(`Confirm that you received ₹${(row.amountPaise / 100).toFixed(2)} for ${row.dateKey}?`)) return;
+    setBusyId(row._id); setError(""); setNotice("");
+    try {
+      const response = await fetch(`/api/shops/settlements/${row._id}/confirm-received`, { method: "POST", credentials: "same-origin" });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "Could not confirm the settlement receipt.");
+      setNotice(`Receipt confirmed for ₹${(row.amountPaise / 100).toFixed(2)}.`);
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not confirm the settlement receipt."); }
+    finally { setBusyId(""); }
+  }
   return <div className="workspace-page"><main className="settings-main wallet-management-main">
-    <div className="wallet-page-heading"><div><small>MERCHANT FINANCE</small><h1>Payment records</h1><p>UrQrPrint does not hold customer funds or offer wallet balances and withdrawals.</p></div><a className="wallet-view-payments" href="/dashboard/payments"><CreditCard size={15}/> View payment records</a></div>
-    <section className="settings-card"><div className="wallet-unavailable-note"><ShieldCheck size={15}/><span>Customers pay your shop directly by UPI or cash. Confirm receipts in your payment app or at the counter, then record the payment on the order. No Razorpay checkout, UrQrPrint wallet, payout, withdrawal, or subscription payment is available.</span></div></section>
+    <div className="wallet-page-heading"><div><small>SHOP PAYOUTS</small><h1>Daily settlements</h1><p>Admin records the daily transfer. Confirm here after the money reaches your account.</p></div><button className="wallet-view-payments" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15}/> Refresh</button></div>
+    {error && <div className="form-alert" role="alert">{error}</div>}{notice && <div className="settlement-notice"><Check size={15}/>{notice}</div>}
+    <div className="settlement-shop-info"><Wallet size={17}/><span>Settlement destination UPI ID</span><b>{upiId || "Not set — add one in Payment setting"}</b>{!upiId && <a href="/dashboard/setting/payment">Open Payment setting <ArrowRight size={13}/></a>}</div>
+    <section className="settings-card settlement-shop-history"><header className="wallet-card-heading"><div><h2>Settlement history</h2><p>Only captured Razorpay customer payments are included. Amounts shown are gross, before any gateway charges.</p></div><small>{rows.length} record{rows.length === 1 ? "" : "s"}</small></header>
+      {loading ? <div className="wallet-history-empty">Loading your settlement history…</div> : rows.length === 0 ? <div className="wallet-history-empty"><Wallet size={24}/><b>No daily settlement requests yet</b><span>Settlements appear after a day with captured Razorpay payments closes.</span></div> : <div className="settlement-shop-list">{rows.map((row) => <article key={row._id} className="settlement-shop-row"><div className="settlement-shop-row-top"><div><small>Business date</small><b>{new Date(`${row.dateKey}T00:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</b><span>{row.orderCount} captured Razorpay order{row.orderCount === 1 ? "" : "s"}</span></div><span className={`settlement-status ${row.status}`}>{row.status === "pending" ? "Admin transfer pending" : row.status === "sent" ? "Payment sent · confirm receipt" : "Payment received"}</span></div><div className="settlement-shop-row-bottom"><b>₹{(row.amountPaise / 100).toFixed(2)}</b>{row.status === "sent" && <div><small>UTR / transfer reference: <b>{row.transferReference || "Not provided"}</b></small><button type="button" disabled={busyId === row._id} onClick={() => void confirmReceived(row)}><Check size={14}/>{busyId === row._id ? "Saving…" : "Confirm payment received"}</button></div>}{row.status === "pending" && <small>Waiting for the admin to transfer this amount.</small>}{row.status === "received" && <small>Confirmed on {row.receivedAt ? new Date(row.receivedAt).toLocaleString() : "—"}</small>}</div></article>)}</div>}
+    </section>
   </main></div>;
 }

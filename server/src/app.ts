@@ -14,6 +14,8 @@ import { printersRouter } from "./routes/printers.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { adminSubscriptionsRouter } from "./routes/adminSubscriptions.js";
 import { razorpayWebhookRouter } from "./routes/razorpayWebhook.js";
+import { adminSettlementsRouter } from "./routes/adminSettlements.js";
+import { shopSettlementsRouter } from "./routes/shopSettlements.js";
 
 export const app = express();
 app.set("trust proxy", 1);
@@ -128,6 +130,8 @@ app.use("/api/shops", subscriptionsRouter);
 app.use("/api/shops", printersRouter);
 app.use("/api/shops", merchantOrdersRouter);
 app.use("/api/admin/subscriptions", adminSubscriptionsRouter);
+app.use("/api/admin/settlements", adminSettlementsRouter);
+app.use("/api/shops/settlements", shopSettlementsRouter);
 app.use("/api/agent", agentRouter);
 app.use("/api/public/shops", publicShopsRouter);
 app.get("/api/health", (_request, response) => {

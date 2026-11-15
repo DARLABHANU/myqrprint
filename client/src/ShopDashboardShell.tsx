@@ -11,6 +11,7 @@ import {
   QrCode,
   Settings,
   Store,
+  Wallet,
   X,
 } from "lucide-react";
 
@@ -52,6 +53,7 @@ const navGroups = [
   { label: "SHOP", links: [
     { title: "My QR code", href: "/dashboard/qr-code", icon: QrCode },
     { title: "My subscription", href: "/dashboard/subscription", icon: CreditCard },
+    { title: "Daily settlements", href: "/dashboard/settlements", icon: Wallet },
     { title: "Setting", href: "/dashboard/setting/page", icon: Settings },
     { title: "My Profile", href: "/dashboard/settings/profile", icon: Store },
     { title: "Help & support", href: "/dashboard/support", icon: HelpCircle },
@@ -66,7 +68,7 @@ function pageTitle(path: string) {
   if (/\/orders?$|\/jobs$/.test(path)) return "Print jobs";
   if (path.endsWith("/payments")) return "Payments";
   if (path.endsWith("/printers")) return "Printers";
-  if (path.endsWith("/withdraw") || path.endsWith("/wallet")) return "Payment records";
+  if (path.endsWith("/withdraw") || path.endsWith("/wallet") || path.endsWith("/settlements")) return "Daily settlements";
   if (path.endsWith("/reports")) return "Reports";
   if (path.endsWith("/qr-code")) return "My QR code";
   if (path.endsWith("/subscription")) return "My subscription";

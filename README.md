@@ -70,6 +70,22 @@ subscription validity and quotas. Razorpay checkout is test-mode only. Captured
 payments are collected by the configured UrQrPrint Razorpay account; linked-account
 shop payouts through Razorpay Route are not implemented.
 
+## Daily shop settlements
+
+Captured Razorpay orders are grouped by shop and India business date. The admin
+manually transfers the displayed gross amount to the shop's UPI ID, records the
+UTR/reference in the private settlements page, and the shopkeeper confirms
+receipt from their signed-in workspace. No funds move automatically.
+
+Set `ADMIN_SETTLEMENT_PASSWORD` (at least 12 characters) and a high-entropy
+`ADMIN_SETTLEMENT_TOKEN` in the backend environment (Render for production,
+`server/.env` locally). Generate the token with
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
+The admin opens `/admin/settlements` and enters the password in the access
+dialog. The server issues a 12-hour session token; the password is never stored
+in browser storage. The page is not linked from the shop dashboard. Keep both
+environment values private and rotate them if exposed.
+
 ## Razorpay test checkout
 
 1. Generate an API Key ID and Key Secret in Razorpay Dashboard **Test Mode**.
