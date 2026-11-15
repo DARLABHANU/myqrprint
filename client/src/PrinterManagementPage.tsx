@@ -179,6 +179,7 @@ export function PrinterManagementPage() {
   }, []);
 
   async function handleDisconnectDevice(deviceId: string) {
+    if (!isInsideElectron) return;
     if (!window.confirm("Disconnect and revoke this computer? It will stop receiving print jobs.")) return;
     setError("");
     setSuccess("");
@@ -202,6 +203,7 @@ export function PrinterManagementPage() {
   }
 
   async function handleDeletePrinter(printerId: string) {
+    if (!isInsideElectron) return;
     if (!window.confirm("Remove this printer and its routing rules?")) return;
     setError("");
     try {
@@ -219,6 +221,7 @@ export function PrinterManagementPage() {
 
   async function handleAddManualPrinter(e: React.FormEvent) {
     e.preventDefault();
+    if (!isInsideElectron) return;
     setAddingPrinter(true);
     setError("");
     try {
@@ -327,6 +330,7 @@ export function PrinterManagementPage() {
   }, [allPossibleCombos, routes]);
 
   async function handleRouteChange(paperSize: PaperSize, colour: boolean, duplex: boolean, printerId: string) {
+    if (!isInsideElectron) return;
     const currentNormalized = routes.map((r: any) => ({
       paperSize: r.paperSize,
       colour: Boolean(r.colour),
@@ -371,8 +375,13 @@ export function PrinterManagementPage() {
   }
 
   async function handleAutoAssignAll() {
+    if (!isInsideElectron) return;
     if (printers.length === 0) return;
-    const targetPrinter = printers.find((p) => p.isDefault) || printers.find((p) => p.status === "ready") || printers[0];
+    const targetPrinter = printers.find((p) => p.isDefault && p.status === "ready") || printers.find((p) => p.status === "ready");
+    if (!targetPrinter) {
+      setError("No ready printer is available. Connect a printer, then refresh this page.");
+      return;
+    }
     const newRoutes = allPossibleCombos.map((combo) => ({
       paperSize: combo.paperSize,
       colour: combo.colour,
@@ -489,6 +498,11 @@ export function PrinterManagementPage() {
         {success && (
           <div style={{ padding: "12px 16px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#16a34a", fontSize: 13, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
             <CheckCircle2 size={16} /> {success}
+          </div>
+        )}
+        {!isInsideElectron && (
+          <div role="status" style={{ padding: "12px 16px", borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontSize: 13, marginBottom: 20 }}>
+            This website view is read-only. Open the UrQrPrint desktop app to add printers, change routing, or disconnect a computer.
           </div>
         )}
 
@@ -628,7 +642,7 @@ export function PrinterManagementPage() {
                         </div>
 
                         {/* Three dots menu */}
-                        <div style={{ position: "relative" }}>
+                        {isInsideElectron && <div style={{ position: "relative" }}>
                           <button
                             type="button"
                             onClick={() => setDeviceMenuOpen(deviceMenuOpen === device.id ? null : device.id)}
@@ -682,7 +696,7 @@ export function PrinterManagementPage() {
                               </button>
                             </div>
                           )}
-                        </div>
+                        </div>}
                       </div>
                     </div>
 
@@ -768,7 +782,7 @@ export function PrinterManagementPage() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {unassignedCount > 0 && printers.length > 0 && (
+              {isInsideElectron && unassignedCount > 0 && printers.length > 0 && (
                 <button
                   type="button"
                   onClick={handleAutoAssignAll}
@@ -899,7 +913,7 @@ export function PrinterManagementPage() {
                                   onChange={(e) =>
                                     void handleRouteChange(combo.paperSize, combo.colour, combo.duplex, e.target.value)
                                   }
-                                  disabled={savingRoutes}
+                                  disabled={!isInsideElectron || savingRoutes}
                                   style={{
                                     border: isUnassigned ? "1px solid #fca5a5" : "1px solid #cbd5e1",
                                     borderRadius: 8,
@@ -1028,10 +1042,12 @@ export function PrinterManagementPage() {
                 No printers added
               </b>
               <p style={{ color: "#64748b", fontSize: 13, maxWidth: 440, margin: "0 auto 20px", lineHeight: 1.5 }}>
-                Open the UrQrPrint desktop app on the computer your printers are connected to, then add them here.
+                {isInsideElectron
+                  ? "Open this page in the UrQrPrint desktop app on the computer your printers are connected to, then add them here."
+                  : "Open the UrQrPrint desktop app on the computer your printers are connected to to discover and add printers."}
               </p>
 
-              <button
+              {isInsideElectron && <button
                 type="button"
                 onClick={() => setAddModalOpen(true)}
                 style={{
@@ -1050,7 +1066,7 @@ export function PrinterManagementPage() {
                 }}
               >
                 <Plus size={15} /> Add printer
-              </button>
+              </button>}
             </div>
           ) : (
             <div>
@@ -1062,7 +1078,7 @@ export function PrinterManagementPage() {
                   </p>
                 </div>
 
-                <button
+                {isInsideElectron && <button
                   type="button"
                   onClick={() => setAddModalOpen(true)}
                   style={{
@@ -1080,7 +1096,7 @@ export function PrinterManagementPage() {
                   }}
                 >
                   <Plus size={14} /> Add Virtual / IPP Printer
-                </button>
+                </button>}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
@@ -1129,7 +1145,7 @@ export function PrinterManagementPage() {
                               <span style={{ color: printer.status === "ready" ? "#16a34a" : "#dc2626", fontWeight: 700 }}>
                                 {printer.status}
                               </span>
-                              {printer.status === "offline" && (
+                              {isInsideElectron && printer.status === "offline" && (
                                 <button
                                   type="button"
                                   onClick={async () => {
@@ -1161,14 +1177,14 @@ export function PrinterManagementPage() {
                           </div>
                         </div>
 
-                        <button
+                        {isInsideElectron && <button
                           type="button"
                           onClick={() => handleDeletePrinter(printer._id)}
                           title="Remove Printer"
                           style={{ border: 0, background: "transparent", color: "#94a3b8", cursor: "pointer", padding: 4 }}
                         >
                           <Trash2 size={15} />
-                        </button>
+                        </button>}
                       </div>
 
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
@@ -1305,7 +1321,7 @@ export function PrinterManagementPage() {
         )}
 
         {/* Add Printer Modal */}
-        {addModalOpen && (
+        {addModalOpen && isInsideElectron && (
           <div
             style={{
               position: "fixed",

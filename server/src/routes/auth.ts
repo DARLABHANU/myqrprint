@@ -137,9 +137,9 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
       return;
     }
     const { ownerName, shopName, mobile, email, password } = parsed.data;
-    console.log(`[AUTH] Registration request for: ${email} (Shop: "${shopName}", Owner: "${ownerName}")`);
+    console.log("[AUTH] Registration request received.");
     if (await User.exists({ email })) {
-      console.warn(`[AUTH] Registration rejected: User ${email} already exists`);
+      console.warn("[AUTH] Registration rejected: account already exists.");
       response.status(409).json({ error: "An account with this email already exists. Sign in with your password or reset it." });
       return;
     }
@@ -165,7 +165,7 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
     } catch (mailError) {
       await PendingRegistration.deleteOne({ email });
       const code = typeof mailError === "object" && mailError !== null && "code" in mailError ? String(mailError.code) : "unknown";
-      console.error("Registration code email could not be delivered:", code);
+      console.error("Registration code email could not be delivered.");
       response.status(503).json({ error: "The verification code could not be sent. Check the email delivery settings and try again." });
       return;
     }
@@ -183,16 +183,16 @@ authRouter.post("/register/verify-code", authLimiter, async (request, response, 
   const parsed = emailSchema.extend({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Enter the email address and six-digit code." }); return; }
   try {
-    console.log(`[AUTH] Verifying registration OTP for: ${parsed.data.email}`);
+    console.log("[AUTH] Registration code verification requested.");
     const pending = await PendingRegistration.findOne({ email: parsed.data.email }).select("+codeHash +passwordHash");
     if (!pending || pending.expiresAt <= new Date() || pending.attempts >= 5) {
-      console.warn(`[AUTH] OTP rejected for ${parsed.data.email}: ${!pending ? "Not found" : pending.attempts >= 5 ? "Too many attempts" : "Expired"}`);
+      console.warn(`[AUTH] Registration code rejected: ${!pending ? "not found" : pending.attempts >= 5 ? "attempt limit reached" : "expired"}.`);
       response.status(400).json({ error: "That registration code is invalid or expired. Request a new code." }); return;
     }
     if (!matchesDigest(parsed.data.code, pending.codeHash)) {
       pending.attempts += 1;
       await pending.save();
-      console.warn(`[AUTH] Incorrect OTP for ${parsed.data.email}. Attempt ${pending.attempts} of 5.`);
+      console.warn(`[AUTH] Registration code mismatch. Attempt ${pending.attempts} of 5.`);
       response.status(400).json({ error: pending.attempts >= 5 ? "Too many incorrect codes. Request a new one." : "That code is incorrect. Check it and try again." });
       return;
     }
@@ -224,7 +224,7 @@ authRouter.post("/register/verify-code", authLimiter, async (request, response, 
     }
     await PendingRegistration.deleteOne({ _id: pending._id });
     await regenerateSession(request, String(user._id));
-    console.log(`[AUTH] Registration completed! User created (ID: ${user._id}), Shop created: "${shop.displayName}" (${shop.slug}).`);
+    console.log(`[AUTH] Registration completed. User ID: ${user._id}; shop ID: ${shop._id}.`);
     response.status(201).json({ user: { id: String(user._id), ownerName, email } });
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === 11000) {
@@ -243,10 +243,10 @@ authRouter.post("/login", authLimiter, async (request, response, next) => {
   }
 
   try {
-    console.log(`[AUTH] Login attempt for: ${parsed.data.email}`);
+    console.log("[AUTH] Login attempt received.");
     const user = await User.findOne({ email: parsed.data.email }).select("+passwordHash");
     if (!user || !user.passwordHash || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
-      console.warn(`[AUTH] Login failed: invalid credentials for ${parsed.data.email}`);
+      console.warn("[AUTH] Login failed: invalid credentials.");
       response.status(401).json({ error: "Email or password is incorrect." });
       return;
     }
@@ -255,7 +255,7 @@ authRouter.post("/login", authLimiter, async (request, response, next) => {
       return;
     }
     await regenerateSession(request, String(user._id));
-    console.log(`[AUTH] Login successful: User ${user.email} (ID: ${user._id})`);
+    console.log(`[AUTH] Login successful. User ID: ${user._id}.`);
     response.json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email } });
   } catch (error) {
     next(error);

@@ -12,21 +12,16 @@ if (typeof window !== "undefined") {
     const method = (config?.method || "GET").toUpperCase();
     const start = performance.now();
 
-    let sanitizedPayload: any = undefined;
-    if (config?.body && typeof config.body === "string") {
-      try {
-        sanitizedPayload = JSON.parse(config.body);
-        if (sanitizedPayload?.password) sanitizedPayload.password = "******";
-        if (sanitizedPayload?.currentPassword) sanitizedPayload.currentPassword = "******";
-        if (sanitizedPayload?.newPassword) sanitizedPayload.newPassword = "******";
-      } catch {
-        sanitizedPayload = config.body;
-      }
-    }
+    // Request bodies and query strings can contain credentials, OTPs, payment
+    // references, and short-lived agent leases. Keep console diagnostics to path/status only.
+    let safePath = "[request]";
+    try {
+      safePath = new URL(url, window.location.origin).pathname;
+    } catch {}
 
     const isFrequentPolling = url.includes("/api/agent/") || url.includes("/heartbeat");
     if (!isFrequentPolling) {
-      console.log(`%c[NET REQ] ${method} ${url}`, "color: #2563eb; font-weight: 600;", sanitizedPayload ? sanitizedPayload : "");
+      console.log(`%c[NET REQ] ${method} ${safePath}`, "color: #2563eb; font-weight: 600;");
     }
 
     try {
@@ -35,12 +30,12 @@ if (typeof window !== "undefined") {
 
       if (!isFrequentPolling || !response.ok) {
         const color = response.ok ? "#059669" : "#dc2626";
-        console.log(`%c[NET RES] ${method} ${url} -> ${response.status} (${duration}ms)`, `color: ${color}; font-weight: 600;`);
+        console.log(`%c[NET RES] ${method} ${safePath} -> ${response.status} (${duration}ms)`, `color: ${color}; font-weight: 600;`);
       }
       return response;
     } catch (error) {
       const duration = Math.round(performance.now() - start);
-      console.error(`%c[NET FAILED] ${method} ${url} (${duration}ms)`, "color: #b91c1c; font-weight: bold;", error);
+      console.error(`%c[NET FAILED] ${method} ${safePath} (${duration}ms)`, "color: #b91c1c; font-weight: bold;", error);
       throw error;
     }
   };

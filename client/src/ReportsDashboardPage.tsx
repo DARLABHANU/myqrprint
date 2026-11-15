@@ -31,6 +31,7 @@ type ReportOrder = {
     duplex: boolean;
     copies: number;
     photoLayout?: string;
+    pageRange?: string;
   };
   files: Array<{ name: string; pageCount: number; mediaType: string }>;
 };
@@ -73,8 +74,36 @@ async function getJson<T>(url: string): Promise<T> {
   return body;
 }
 
+function selectedFilePages(order: ReportOrder, file: ReportOrder["files"][number]) {
+    if (file.mediaType !== "application/pdf" || !order.options.pageRange?.trim()) return file.pageCount;
+    const selected = new Set<number>();
+    for (const part of order.options.pageRange.split(",")) {
+      const match = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(part.trim());
+      if (!match) return file.pageCount;
+      const start = Number(match[1]);
+      const end = Math.min(Number(match[2] ?? match[1]), file.pageCount);
+      for (let page = start; page <= end; page += 1) selected.add(page);
+    }
+    return selected.size || file.pageCount;
+}
+
 function printPages(order: ReportOrder) {
-  return order.files.reduce((sum, file) => sum + file.pageCount, 0) * (order.options?.copies ?? 1);
+  const pdfPages = order.files
+    .filter((file) => file.mediaType === "application/pdf")
+    .reduce((sum, file) => sum + selectedFilePages(order, file), 0);
+  const photoCount = order.files.filter((file) => file.mediaType.startsWith("image/")).length;
+  const photoSlots = order.options.photoLayout === "two_stack" || order.options.photoLayout === "two_side_by_side" ? 2
+    : order.options.photoLayout === "four" ? 4
+    : order.options.photoLayout === "six" ? 6
+    : order.options.photoLayout === "nine" ? 9
+    : 1;
+  const photoPages = photoCount ? Math.ceil(photoCount / photoSlots) : 0;
+  return (pdfPages + photoPages) * (order.options?.copies ?? 1);
+}
+
+function duplexSheets(order: ReportOrder) {
+  const pages = printPages({ ...order, options: { ...order.options, copies: 1 } });
+  return Math.ceil(pages / 2) * (order.options?.copies ?? 1);
 }
 
 function paymentShare(orders: ReportOrder[], method: string, totalRevenue: number) {
@@ -121,17 +150,17 @@ export function ReportsDashboardPage() {
   const printed = currentOrders.filter((order) => order.status === "printed");
   const previousPrinted = previousOrders.filter((order) => order.status === "printed");
 
-  const paidPrinted = printed.filter((order) => order.paymentStatus === "paid");
-  const previousPaidPrinted = previousPrinted.filter((order) => order.paymentStatus === "paid");
+  const paidOrders = currentOrders.filter((order) => order.paymentStatus === "paid");
+  const previousPaidOrders = previousOrders.filter((order) => order.paymentStatus === "paid");
 
-  const revenue = paidPrinted.reduce((sum, order) => sum + order.amountPaise, 0);
-  const previousRevenue = previousPaidPrinted.reduce((sum, order) => sum + order.amountPaise, 0);
+  const revenue = paidOrders.reduce((sum, order) => sum + order.amountPaise, 0);
+  const previousRevenue = previousPaidOrders.reduce((sum, order) => sum + order.amountPaise, 0);
 
   const pages = printed.reduce((sum, order) => sum + printPages(order), 0);
   const previousPages = previousPrinted.reduce((sum, order) => sum + printPages(order), 0);
 
-  const average = printed.length ? Math.round(revenue / printed.length) : 0;
-  const previousAverage = previousPrinted.length ? Math.round(previousRevenue / previousPrinted.length) : 0;
+  const average = paidOrders.length ? Math.round(revenue / paidOrders.length) : 0;
+  const previousAverage = previousPaidOrders.length ? Math.round(previousRevenue / previousPaidOrders.length) : 0;
 
   const getPercentDiff = (curr: number, prev: number) => {
     if (prev === 0) return { label: curr > 0 ? "New" : "0%", isPositive: true };
@@ -147,7 +176,7 @@ export function ReportsDashboardPage() {
       return Array.from({ length: 12 }, (_, index) => {
         const date = new Date();
         date.setMonth(date.getMonth() - 11 + index, 1);
-        const amount = paidPrinted
+        const amount = paidOrders
           .filter((order) => {
             const created = new Date(order.createdAt);
             return created.getFullYear() === date.getFullYear() && created.getMonth() === date.getMonth();
@@ -161,7 +190,7 @@ export function ReportsDashboardPage() {
       const date = new Date();
       date.setHours(0, 0, 0, 0);
       date.setDate(date.getDate() - (count - 1 - index));
-      const amount = paidPrinted
+      const amount = paidOrders
         .filter((order) => new Date(order.createdAt).toDateString() === date.toDateString())
         .reduce((sum, order) => sum + order.amountPaise, 0);
       return {
@@ -169,7 +198,7 @@ export function ReportsDashboardPage() {
         amount,
       };
     });
-  }, [paidPrinted, range]);
+  }, [paidOrders, range]);
 
   const maxRevenue = Math.max(1, ...revenueBars.map((bar) => bar.amount));
 
@@ -180,21 +209,21 @@ export function ReportsDashboardPage() {
       label: "UPI",
       description: "Straight to your UPI ID",
       iconType: "upi",
-      ...paymentShare(printed, "upi", revenue),
+      ...paymentShare(paidOrders, "upi", revenue),
     },
     {
       method: "razorpay",
       label: "Razorpay",
-      description: "Online gateway (on hold)",
+      description: "Online payments",
       iconType: "razorpay",
-      ...paymentShare(printed, "razorpay", revenue),
+      ...paymentShare(paidOrders, "razorpay", revenue),
     },
     {
       method: "cash",
       label: "Cash",
       description: "Collected at the counter",
       iconType: "cash",
-      ...paymentShare(printed, "cash", revenue),
+      ...paymentShare(paidOrders, "cash", revenue),
     },
   ];
 
@@ -202,13 +231,11 @@ export function ReportsDashboardPage() {
   const pageRows = (shop?.enabledPaperSizes ?? ["A4"]).flatMap((paperSize) =>
     [false, ...(shop?.colourEnabled !== false ? [true] : [])].map((colour) => {
       const matching = printed.filter((order) => order.options.paperSize === paperSize && order.options.colour === colour);
+      const paidMatching = paidOrders.filter((order) => order.options.paperSize === paperSize && order.options.colour === colour);
       const singleSide = matching.filter((order) => !order.options.duplex);
       const bothSides = matching.filter((order) => order.options.duplex);
       const sumPages = (items: ReportOrder[]) => items.reduce((sum, order) => sum + printPages(order), 0);
-      const duplexSheets = bothSides.reduce(
-        (sum, order) => sum + order.files.reduce((fileSum, file) => fileSum + Math.ceil(file.pageCount / 2), 0) * (order.options.copies ?? 1),
-        0
-      );
+      const duplexSheetCount = bothSides.reduce((sum, order) => sum + duplexSheets(order), 0);
       const rate = shop?.rates?.[paperSize];
       const oneSideRate = rate ? (colour ? rate.colourSimplexPaise : rate.blackWhiteSimplexPaise) : 0;
       const bothSideRate = rate ? (colour ? rate.colourDuplexSheetPaise : rate.blackWhiteDuplexSheetPaise) : 0;
@@ -217,8 +244,8 @@ export function ReportsDashboardPage() {
         colour,
         oneSidePages: sumPages(singleSide),
         bothSidePages: sumPages(bothSides),
-        duplexSheets,
-        revenue: matching.filter((order) => order.paymentStatus === "paid").reduce((sum, order) => sum + order.amountPaise, 0),
+        duplexSheets: duplexSheetCount,
+        revenue: paidMatching.reduce((sum, order) => sum + order.amountPaise, 0),
         oneSideRate,
         bothSideRate,
       };
@@ -250,16 +277,17 @@ export function ReportsDashboardPage() {
     }, {} as Record<string, number>);
 
   // Orders by hour of day
-  const hours = Array.from({ length: 24 }, (_, hour) => printed.filter((order) => new Date(order.createdAt).getHours() === hour).length);
+  const hours = Array.from({ length: 24 }, (_, hour) => currentOrders.filter((order) => new Date(order.createdAt).getHours() === hour).length);
   const peakCount = Math.max(0, ...hours);
   const peakHour = peakCount ? `${String(hours.findIndex((count) => count === peakCount)).padStart(2, "0")}:00` : "—";
 
   function exportCsv() {
     const rows = [
-      ["Order", "Date", "Payment method", "Payment status", "Paper", "Colour", "Sides", "Pages", "Copies", "Revenue"],
-      ...printed.map((order) => [
+      ["Order", "Date", "Status", "Payment method", "Payment status", "Paper", "Colour", "Sides", "Pages", "Copies", "Revenue"],
+      ...currentOrders.map((order) => [
         order.code,
         order.createdAt,
+        order.status,
         order.paymentMethod,
         order.paymentStatus,
         order.options.paperSize,
@@ -267,7 +295,7 @@ export function ReportsDashboardPage() {
         order.options.duplex ? "Both sides" : "One side",
         printPages(order),
         order.options.copies ?? 1,
-        (order.amountPaise / 100).toFixed(2),
+        ((order.paymentStatus === "paid" ? order.amountPaise : 0) / 100).toFixed(2),
       ]),
     ];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\r\n");
@@ -296,7 +324,7 @@ export function ReportsDashboardPage() {
       icon: CreditCard,
     },
     {
-      title: "Orders",
+      title: "Orders printed",
       value: String(printed.length),
       diff: getPercentDiff(printed.length, previousPrinted.length),
       icon: FileText,
@@ -369,7 +397,7 @@ export function ReportsDashboardPage() {
                 transition: "all 0.15s",
               }}
             >
-              <FileText size={14} style={{ color: "#64748b" }} /> Download PDF
+              <FileText size={14} style={{ color: "#64748b" }} /> Print / save PDF
             </button>
           </div>
         </header>

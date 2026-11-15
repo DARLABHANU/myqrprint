@@ -80,7 +80,7 @@ export default function App() {
   }
   if (path === "/register") return <AccountPage mode="register" />;
   if (path === "/login") return <AccountPage mode="login" />;
-  if (path === "/verify-email") return <AccountPage mode="login" />;
+  if (path === "/verify-email") return <AuthFlowPage flow="email" />;
   if (path === "/forgot-password") return <AuthFlowPage flow="forgot" />;
   if (path === "/reset-password") return <AuthFlowPage flow="reset" />;
   if (path === "/dashboard/settings") return shopPage(<ShopSettingsPage />);

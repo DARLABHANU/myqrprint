@@ -487,6 +487,7 @@ h1, h2, h3, p { margin-top: 0; }
 .shop-qr-name-row { min-width:0; display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
 .shop-qr-name-row h2 { min-width:0; margin:0; overflow-wrap:anywhere; color:#fff; font:750 16px Manrope,sans-serif; }
 .shop-qr-name-row > span { padding:3px 8px; border-radius:12px; background:#0c614e; color:#75e2bf; font-size:9px; font-weight:700; }
+.shop-qr-name-row > span.shop-qr-status-offline { background:#3a2730; color:#ff9aa7; }
 .shop-qr-name-row > small { color:#94a1b6; font-size:9px; }
 .shop-qr-name-row > small b { color:#fff; }
 .shop-qr-link { width:100%; min-width:0; height:36px; display:flex; align-items:center; gap:9px; padding:0 9px; border:1px solid #314057; border-radius:9px; background:#202c40; color:#9ba9bd; }

@@ -238,16 +238,17 @@ authenticatedAgentRouter.get("/jobs/next", async (request, response, next) => {
     for (const candidate of candidates) {
       const options = candidate.options!;
       const route = await PrinterRoute.findOne({ shopId: agent.shopId, paperSize: options.paperSize, colour: options.colour, duplex: options.duplex });
-      let printer = null;
-      if (route) {
-        printer = await ShopPrinter.findOne({ _id: route.printerId, shopId: agent.shopId });
-      }
-      if (!printer) {
-        // Fallback: match virtual on http printer, or default printer, or any printer in shop
-        printer = (await ShopPrinter.findOne({ shopId: agent.shopId, systemName: /virtual/i }))
-          ?? (await ShopPrinter.findOne({ shopId: agent.shopId, isDefault: true, systemName: { $type: "string" } }))
-          ?? (await ShopPrinter.findOne({ shopId: agent.shopId, systemName: { $type: "string" } }));
-      }
+      if (!route) continue;
+      // A job is only eligible for the printer the shop explicitly routed it to.
+      // Never silently send it to a different/default printer or another PC.
+      const printer = await ShopPrinter.findOne({
+        _id: route.printerId,
+        shopId: agent.shopId,
+        agentDeviceId: agent._id,
+        protocol: "windows",
+        status: "ready",
+        systemName: { $type: "string", $ne: "" },
+      });
       if (!printer?.systemName) continue;
       const leaseId = randomUUID();
       const claimed = await PrintOrder.findOneAndUpdate(

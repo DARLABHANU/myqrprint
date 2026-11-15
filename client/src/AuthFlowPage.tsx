@@ -172,14 +172,14 @@ export function AuthFlowPage({ flow }: { flow: Flow }) {
           {error && <div className="form-alert" role="alert">{error}</div>}
           {message && <div className="success-alert" role="status"><Check size={15} />{message}</div>}
 
-          <button className="button button-dark account-submit" type="submit" disabled={busy}>
+          <button className="button button-dark account-submit" type="submit" disabled={busy || (flow === "email" && message.startsWith("Email verified successfully"))}>
             {busy && <LoaderCircle className="spin" size={15} />}
             {flow === "register"
               ? "Create account"
               : flow === "otp"
               ? "Verify registration"
               : flow === "email"
-              ? "Verify email"
+              ? message.startsWith("Email verified successfully") ? "Email verified" : "Verify email"
               : flow === "forgot"
               ? "Send reset link"
               : flow === "reset"

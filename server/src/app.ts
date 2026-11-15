@@ -73,17 +73,8 @@ app.use((request, response, next) => {
     const color = code >= 500 ? "\x1b[31m" : code >= 400 ? "\x1b[33m" : code >= 300 ? "\x1b[36m" : "\x1b[32m";
     const reset = "\x1b[0m";
 
-    let sanitizedBody = "";
-    if (request.body && typeof request.body === "object" && !Buffer.isBuffer(request.body) && Object.keys(request.body).length > 0) {
-      const copy = { ...request.body };
-      if ("password" in copy) copy.password = "******";
-      if ("currentPassword" in copy) copy.currentPassword = "******";
-      if ("newPassword" in copy) copy.newPassword = "******";
-      sanitizedBody = ` | Body: ${JSON.stringify(copy)}`;
-    }
-
-    const queryStr = Object.keys(request.query).length > 0 ? ` ?${new URLSearchParams(request.query as Record<string, string>).toString()}` : "";
-    console.log(`[${time}] ${color}${request.method} ${request.baseUrl || ""}${request.path}${queryStr}${reset} -> ${color}${code}${reset} (${duration}ms)${code >= 400 ? sanitizedBody : ""}`);
+    const routePath = `${request.baseUrl || ""}${request.path}`;
+    console.log(`[${time}] ${color}${request.method} ${routePath}${reset} -> ${color}${code}${reset} (${duration}ms)`);
   });
 
   next();
@@ -160,11 +151,10 @@ app.use((_request, response) => {
 
 app.use((error: unknown, request: express.Request, response: express.Response, _next: express.NextFunction) => {
   if (error instanceof Error && error.message === "Request origin is not allowed.") {
-    console.warn(`\x1b[33m[ORIGIN BLOCKED]\x1b[0m ${request.method} ${request.originalUrl} from origin: ${request.get("origin")}`);
+    console.warn(`\x1b[33m[ORIGIN BLOCKED]\x1b[0m ${request.method} ${request.path} from origin: ${request.get("origin")}`);
     response.status(403).json({ error: "Request origin is not allowed." });
     return;
   }
-  console.error(`\x1b[31m[API EXCEPTION]\x1b[0m ${request.method} ${request.originalUrl}:`, error instanceof Error ? error.stack || error.message : error);
-  const errorMessage = error instanceof Error ? error.message : "The server could not complete the request.";
-  response.status(500).json({ error: errorMessage });
+  console.error(`\x1b[31m[API EXCEPTION]\x1b[0m ${request.method} ${request.path}: ${error instanceof Error ? error.name : "UnknownError"}`);
+  response.status(500).json({ error: "The server could not complete the request." });
 });
