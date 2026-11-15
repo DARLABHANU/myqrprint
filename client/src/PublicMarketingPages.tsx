@@ -79,14 +79,15 @@ const faqGroups = [
   {
     name: "Payments",
     questions: [
-      ["Who receives print-order payments?", "Customers pay the shop directly by UPI or cash. A shopkeeper confirms payment in the order queue."],
-      ["Does UrQrPrint take a per-order commission?", "The customer print-payment flow is direct to the shop; it does not route customer funds through UrQrPrint."],
+      ["Who receives online print-order payments?", "When Razorpay checkout is enabled, the customer pays through UrQrPrint’s Razorpay account. The platform records the payment and handles shop settlements separately. Cash-at-counter orders are paid directly to the shop."],
+      ["How are shops paid for Razorpay orders?", "The platform administrator reviews captured payments and records shop settlements to the shop’s saved UPI details. A settlement request is not proof of transfer; the shop should confirm receipt in its bank or UPI account."],
+      ["Can I cancel an order or request a refund?", "Unpaid orders can expire or be cancelled. Cancelling a paid order does not automatically refund it. Use the Refund and Cancellation Policy and contact UrQrPrint support with the order and payment references."],
     ],
   },
   {
     name: "Privacy & security",
     questions: [
-      ["Are uploaded files public?", "No. Order uploads are private to the customer order and the shop that is fulfilling it."],
+      ["Are uploaded files public?", "UrQrPrint does not list customer uploads in a public gallery. Order-specific file links are used for preview and printing, though anyone who obtains a live link may be able to view the file until it is removed. Avoid uploading highly sensitive documents."],
       ["When are files removed?", "Files are cleaned up after an order reaches a terminal state or after the shop-configured retention period."],
     ],
   },
@@ -95,7 +96,7 @@ const faqGroups = [
     questions: [
       ["What shop subscriptions are available?", "UrQrPrint offers a 7-day Free Trial (up to 50 orders), Starter (₹199/mo, 300 orders), Professional (₹499/mo, 1,500 orders), and Enterprise (₹999/mo, unlimited orders)."],
       ["How do I pay for my shop subscription?", "You can pay via any UPI app (GPay, PhonePe, Paytm, BHIM) by scanning our platform UPI QR code, then submit the 12-digit UTR in your shop dashboard for quick verification."],
-      ["Does UrQrPrint take a cut of customer print orders?", "No. Customers pay your shop directly by UPI or cash at your counter. UrQrPrint takes 0% commission on your print jobs."],
+      ["How do customer print payments work?", "When enabled, online orders use Razorpay checkout on UrQrPrint. Cash orders are collected by the shop at the counter. Shop settlements are tracked separately; see the Terms and Refund Policy for details."],
     ],
   },
 ] as const;
@@ -299,29 +300,29 @@ const articles = [
 const pageContent: Record<string, MarketingPage> = {
   "/features": {
     title: "Everything your print counter needs",
-    intro: "Help customers send files from their phones while your shop controls pricing, direct payment, order review, and pickup.",
+    intro: "Help customers send files from their phones while your shop controls pricing, checkout availability, order review, and pickup.",
     category: "features",
     sections: [
       { title: "Customer QR ordering", body: "A shop-specific QR opens the order page in a browser, with no customer app or account required." },
       { title: "PDF and photo uploads", body: "Accept multiple files in one order and guide customers through the available print settings." },
       { title: "Live price calculation", body: "Calculate the quote from shop-configured prices, copies, paper size, colour, duplex, and eligible discounts." },
-      { title: "Manual order fulfillment", body: "Review customer orders, confirm direct UPI or cash payments, approve paid orders for manual fulfillment, and mark completed orders ready for pickup." },
+      { title: "Order fulfillment", body: "Review paid Razorpay orders and cash-at-counter orders, use the Windows agent to print when it is online, and track each job through pickup." },
       { title: "Payments and reports", body: "Review recorded payments and shop activity with dashboard reports and export options." },
       { title: "QR poster maker", body: "Create a printable customer QR poster in several sizes, styles, and languages." },
-      { title: "Privacy controls", body: "Keep uploads private and configure automatic file retention and cleanup." },
+      { title: "Privacy controls", body: "Control customer data collection and configure automatic file expiry and cleanup." },
       { title: "Shop settings", body: "Manage paper sizes, rates, payment methods, discounts, notifications, customer details, and location controls." },
     ],
   },
   "/how-it-works": {
     title: "From QR scan to order pickup",
-    intro: "Customer ordering and shop-side order management are available. Printer setup and automated printing are temporarily paused.",
+    intro: "Customers upload and pay through a shop’s order page. When the shop’s desktop agent is online and auto-print is enabled, verified Razorpay orders can be sent to its configured printer.",
     category: "features",
     sections: [
       { title: "1. Share your shop QR", body: "Download or print the shop QR code and place it at your counter." },
       { title: "2. Upload and choose options", body: "Customers upload PDFs or photos, choose page ranges, copies, paper size, colour, and sides, then review their quote." },
-      { title: "3. Pay the shop", body: "Customers pay the shop directly by UPI or choose cash at the counter when enabled." },
-      { title: "4. Review and fulfill manually", body: "The shop confirms payment, approves the paid order, and handles fulfillment outside UrQrPrint while printer automation is paused." },
-      { title: "5. Collect and clean up", body: "The order status and pickup code help the customer collect the job; file cleanup follows the shop's retention settings." },
+      { title: "3. Pay securely", body: "Where enabled, customers pay online using Razorpay checkout; otherwise they can choose cash at the counter. Online payment is confirmed by the gateway before a paid order enters fulfillment." },
+      { title: "4. Print at the shop", body: "The shop’s Windows agent receives paid orders when it is connected and the shop is online. The shop can configure automatic printing or require approval first. Cash orders wait for the shop to confirm collection." },
+      { title: "5. Settle and collect", body: "Razorpay collections are settled to shops separately by the platform administrator. The order status and pickup code help customers collect the job; uploaded files are cleaned up according to expiry and order status." },
     ],
   },
   "/pricing": {
@@ -330,13 +331,13 @@ const pageContent: Record<string, MarketingPage> = {
     category: "features",
     sections: [
       { title: "Free 7-day evaluation", body: "Every new shop begins with a 7-day free trial with up to 50 customer orders. No credit card required." },
-      { title: "Direct UPI & cash payments", body: "Customers pay your shop directly via your own UPI ID or counter cash. UrQrPrint takes 0% commission on your customer orders." },
+      { title: "Online and counter payments", body: "Customers can pay with Razorpay checkout when enabled or pay cash at the counter. Razorpay collections are settled to shops separately; see the Terms and Refund Policy for details." },
       { title: "Upgrade anytime", body: "Move to Starter, Professional, or Enterprise as your order volume grows, with simple UPI-based subscription activation." },
     ],
   },
   "/faq": {
     title: "Frequently asked questions",
-    intro: "Get answers about shop setup, manual order handling, direct payments, privacy, and the paused printer service.",
+    intro: "Get answers about shop setup, printing, Razorpay checkout, shop settlements, privacy, and refunds.",
     category: "faq",
     sections: [],
   },
@@ -352,11 +353,12 @@ const pageContent: Record<string, MarketingPage> = {
   },
   "/contact": {
     title: "Contact and support",
-    intro: "For an order question, contact the shop that received the order. Platform support details can be configured before public launch.",
+    intro: "For a print order, contact the shop shown on the customer order page. For UrQrPrint account, payment, privacy, or settlement questions, contact platform support.",
     category: "contact",
     sections: [
       { title: "Customer order support", body: "Use the contact details on the shop's public order page for payment, pickup, or order-status questions." },
-      { title: "Shop-owner support", body: "Shop owners can review setup guidance and the support section in their dashboard." },
+      { title: "Platform support", body: "The platform support email address and phone number have not been supplied for publication yet. The operator must add monitored business contact details here before Razorpay review or public customer payments." },
+      { title: "Shop-owner support", body: "Shop owners can also review setup guidance and Help & support in their dashboard." },
     ],
   },
   "/partner": {
@@ -402,7 +404,7 @@ const pageContent: Record<string, MarketingPage> = {
     sections: [
       { title: "A simple customer entry point", body: "Share one QR code for customers to submit documents without installing an app." },
       { title: "Review before printing", body: "Confirm the order settings and payment in the dashboard before accepting the print job." },
-      { title: "Private files", body: "Uploads are private to the order and removed by the configured cleanup process." },
+      { title: "Order file handling", body: "Uploads are linked to an order and removed by the configured cleanup process. Do not upload highly sensitive documents." },
     ],
   },
   "/solutions/college-library": {
@@ -416,13 +418,27 @@ const pageContent: Record<string, MarketingPage> = {
     ],
   },
   "/refund-policy": {
-    title: "Refund policy",
-    intro: "Customer print payments are made directly to the shop; UrQrPrint does not process those customer order payments.",
+    title: "Refund and cancellation policy",
+    intro: "Effective November 15, 2026. This policy applies to customer print orders and shop subscriptions processed through UrQrPrint.",
     category: "legal",
     sections: [
-      { title: "Print-order payments", body: "The shop and customer should resolve any refund or reprint request for a direct UPI or cash payment with the shop that fulfilled the order." },
-      { title: "Subscription requests", body: "Paid plan requests are reviewed manually. Contact the platform operator for questions about a submitted plan payment." },
-      { title: "Development status", body: "The policy and payment workflow should be reviewed before the product is used as a public commercial service." },
+      { title: "Cancel before payment", body: "If payment has not been completed, the order may be cancelled or expire without a charge. A Razorpay checkout that was opened but not successfully paid does not count as a paid order." },
+      { title: "Refund eligibility for online print orders", body: "Online Razorpay payments are collected through UrQrPrint’s payment account. Contact platform support promptly if you were charged but the order was not accepted, the payment was duplicated, or the shop could not print the paid order. We review the payment and order records and may coordinate with the shop before deciding whether a full or partial refund is due. A completed print job is generally not refundable unless required by applicable law or the service was not provided as agreed." },
+      { title: "How to request a refund", body: "Contact platform support with the order code, Razorpay payment ID or receipt, payment date and amount, and a short explanation. Do not send full card numbers, CVV, OTPs, or banking passwords. Refunds are not automatic when an order is cancelled in the dashboard. If approved, the refund is initiated through the payment provider to the original payment method; posting time depends on the provider and the customer’s bank." },
+      { title: "Cash orders and reprints", body: "Cash is collected by the selected shop, not UrQrPrint. Contact that shop to request a cash refund or reprint. UrQrPrint cannot return cash it did not collect." },
+      { title: "Shop subscriptions", body: "Subscription payments and activation are separate from customer print orders. Contact platform support with the plan request and payment reference if a subscription payment was duplicated, not recorded, or the plan was not activated. Any approved refund is returned through the original payment route where available." },
+      { title: "Contact and legal rights", body: "Use the platform support details on the Contact page for online payment and subscription requests, and the shop contact shown on the order page for cash or fulfillment issues. Nothing in this policy limits rights that cannot be excluded under applicable law." },
+    ],
+  },
+  "/delivery-policy": {
+    title: "Delivery and pickup policy",
+    intro: "Effective November 15, 2026. UrQrPrint supports print orders for pickup from the shop selected by the customer; it does not arrange courier or home delivery.",
+    category: "legal",
+    sections: [
+      { title: "Where the order is fulfilled", body: "The customer selects a participating print shop by scanning its QR code or opening its order page. That shop prints and prepares the order at its own location. UrQrPrint does not ship documents or printed pages to a customer’s home." },
+      { title: "Order status and pickup", body: "The customer should use the order reference or pickup code shown after submission and follow any pickup instructions displayed by the shop. The shop controls its opening hours, queue, and estimated ready time. A paid order confirmation does not mean the print is already complete; wait for the shop’s ready-for-pickup status or confirmation before collecting." },
+      { title: "Delays or unavailable printing", body: "A shop may be unable to print immediately because its desktop agent, computer, internet connection, or printer is unavailable. Contact the selected shop for the order’s status. If the paid order cannot be fulfilled, see the Refund and Cancellation Policy for the review process." },
+      { title: "Contact", body: "For order location, opening hours, estimated completion, or pickup, contact the selected shop using its public shop page. For online payment or platform issues, contact UrQrPrint through the Contact page." },
     ],
   },
 };
@@ -797,7 +813,7 @@ export function PublicMarketingPages({ path }: { path: string }) {
         <a className="brand" href="/" aria-label="UrQrPrint home"><span className="brand-mark"><QrCode size={19} /></span><span>UrQrPrint<span className="brand-period">.</span></span></a>
         <p>Simple online ordering for local print shops.</p>
         <nav aria-label="Footer navigation">
-          <a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/solutions">Solutions</a><a href="/faq">FAQ</a><a href="/printing-software">Print by city</a><a href="/blog">Guides</a><a href="/contact">Contact</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/refund-policy">Refund policy</a>
+          <a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/solutions">Solutions</a><a href="/faq">FAQ</a><a href="/printing-software">Print by city</a><a href="/blog">Guides</a><a href="/contact">Contact</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/refund-policy">Refund policy</a><a href="/delivery-policy">Delivery policy</a>
         </nav>
         <small>© {new Date().getFullYear()} UrQrPrint. Built for local print shops.</small>
       </footer>

@@ -51,7 +51,7 @@ const steps = [
     number: "03",
     title: "You fulfill, they pick up",
     description:
-      "Confirm payment, handle fulfillment manually while printer automation is paused, and update pickup status.",
+      "Confirm cash payments, approve paid jobs when required, and track printing through pickup.",
     icon: Printer,
   },
 ];
@@ -59,7 +59,7 @@ const steps = [
 const benefits = [
   "No app or account needed for your customers",
   "UPI goes directly to your shop",
-  "Private uploads with clear retention controls",
+  "Order uploads with clear retention controls",
   "You manage payment, manual fulfillment, and pickup status",
 ];
 
@@ -112,7 +112,7 @@ export default function App() {
   if (path === "/terms") return <LegalPage kind="terms" />;
   if (path === "/privacy-policy") return <LegalPage kind="privacy" />;
   if (path === "/refund-policy") return <PublicMarketingPages path={path} />;
-  if (["/features", "/how-it-works", "/pricing", "/faq", "/about", "/contact", "/partner", "/solutions", "/solutions/cyber-cafe", "/solutions/xerox-shop", "/solutions/csc-center", "/solutions/college-library"].includes(path)) return <PublicMarketingPages path={path} />;
+  if (["/delivery-policy", "/features", "/how-it-works", "/pricing", "/faq", "/about", "/contact", "/partner", "/solutions", "/solutions/cyber-cafe", "/solutions/xerox-shop", "/solutions/csc-center", "/solutions/college-library"].includes(path)) return <PublicMarketingPages path={path} />;
   if (path !== "/") return <PublicMarketingPages path={path} />;
   return <LandingPage />;
 }
@@ -211,7 +211,7 @@ function LandingPage() {
                 <div className="phone-options"><span>A4</span><span>B&W</span><span>Single-sided</span></div>
                 <div className="phone-total"><span>Estimated total</span><b>₹20.00</b></div>
                 <div className="phone-submit">Continue to payment <ArrowRight size={14} /></div>
-                <div className="phone-secure"><ShieldCheck size={12} /> Your file stays private</div>
+                <div className="phone-secure"><ShieldCheck size={12} /> Used for this print order</div>
               </div>
             </div>
             <div className="floating-tag tag-bottom"><span className="tag-icon tag-green"><Zap size={16} /></span><span><b>New order received</b><small>4 pages · ₹20.00</small></span><span className="tag-live">NOW</span></div>
@@ -276,14 +276,14 @@ function LandingPage() {
         <section className="marketing-pricing-section" id="pricing">
           <div className="marketing-section-heading">
             <div className="eyebrow"><span className="eyebrow-dot" /> Clear pricing, your way</div>
-            <h2>Subscriptions are<br /><span>coming soon.</span></h2>
-            <p>Subscription billing is unavailable. Customer shop orders are not restricted by legacy plan dates or order limits.</p>
+            <h2>Plans for every<br /><span>print counter.</span></h2>
+            <p>Start with a 7-day trial, then choose a shop plan as your customer orders grow.</p>
           </div>
           <div className="marketing-pricing-card">
-            <div><span className="pricing-card-kicker">NOT AVAILABLE YET</span><h3>No subscription checkout</h3><p>This section is informational only. Do not send a subscription payment or transaction reference.</p></div>
-            <ul><li><Check size={15} /> No subscription billing or payment requests</li><li><Check size={15} /> No subscription expiry enforcement</li><li><Check size={15} /> No customer-order quota</li></ul>
+            <div><span className="pricing-card-kicker">SHOP PLANS</span><h3>From ₹199 / month</h3><p>Starter, Professional, and Enterprise plans are available, along with a 7-day free trial.</p></div>
+            <ul><li><Check size={15} /> Plan duration and order quota shown before activation</li><li><Check size={15} /> Subscription payments are separate from customer print orders</li><li><Check size={15} /> Admin reviews subscription payment references</li></ul>
             <a className="button button-dark" href="/pricing">Subscription details <ArrowRight size={15} /></a>
-            <small>Customer payments, when enabled by a shop, are paid directly to that shop by UPI or cash.</small>
+            <small>Customer online payments use Razorpay when enabled; cash is collected by the shop.</small>
           </div>
         </section>
 
@@ -293,19 +293,21 @@ function LandingPage() {
             <h2>A few things<br /><span>worth knowing.</span></h2>
           </div>
           <div className="marketing-faq-list">
-            <details><summary>Does UrQrPrint process or hold customer payments?</summary><p>No. Customers pay your shop directly using your UPI details or pay cash at the counter. You verify payment yourself before approving a job.</p></details>
+            <details><summary>How do customer payments work?</summary><p>When enabled, online print orders are paid through UrQrPrint’s Razorpay checkout and confirmed by the gateway. Cash-at-counter orders are paid directly to the shop and wait for the shopkeeper to confirm collection.</p></details>
             <details><summary>Who sets the print prices?</summary><p>You configure prices by paper size, colour, and single- or double-sided printing. The server calculates the customer’s quote from those saved rates.</p></details>
-            <details><summary>What files can customers upload?</summary><p>Customers can submit PDF documents or JPG, PNG, and WEBP photos. Uploads are private, validated, and limited to 10 files at up to 25 MB per file.</p></details>
+            <details><summary>What files can customers upload?</summary><p>Customers can submit PDF documents or JPG, PNG, and WEBP photos. Files are validated and limited to 10 files at up to 25 MB per file. Order-specific file links are used for preview and printing; avoid uploading highly sensitive documents.</p></details>
             <details><summary>How long are uploaded files retained?</summary><p>Each shop sets a pending-file retention period in its settings. Files for active jobs remain available until the order is completed or cancelled.</p></details>
-            <details><summary>Is printer automation available?</summary><p>No. Printer setup, printer pairing, routing, and automatic print-job execution are temporarily paused. You can still review customer orders and manage manual fulfillment.</p></details>
-            <details><summary>Are shop subscriptions available?</summary><p>No. The subscription page is a placeholder. No subscription payments, expiry rules, or customer-order quotas are active.</p></details>
+            <details><summary>How does printing work?</summary><p>The shop’s Windows agent must be running, signed in, and set online. Paid Razorpay jobs can print automatically when the shop has enabled auto-print; otherwise the shop must approve them. Cash orders wait for payment confirmation.</p></details>
+            <details><summary>How are shops paid?</summary><p>Razorpay customer collections are settled separately by the platform administrator to the shop’s saved settlement details. Shops confirm receipt after verifying the transfer. See the Terms and Refund Policy for details.</p></details>
+            <details><summary>Are shop subscriptions available?</summary><p>Yes. Shops can view the available plan, price, duration, and order limit on the subscription page. Subscription payment and activation are separate from customer print-order payments.</p></details>
+            <details><summary>How do I request a refund?</summary><p>See the Refund and Cancellation Policy. Cancelling an order does not automatically refund a captured Razorpay payment.</p></details>
           </div>
         </section>
 
         <section className="marketing-contact-section" id="contact">
           <div><div className="eyebrow eyebrow-light"><span className="eyebrow-dot" /> Need help?</div><h2>For a print order,<br /><span>talk to the shop.</span></h2><p>UrQrPrint sends orders to the local shop you selected. Use the contact details on that shop’s page for pickup or payment questions.</p></div>
           <a className="button button-light button-large" href="/register">Set up your shop <ArrowRight size={16} /></a>
-          <small>Platform support contact details are not configured in this development build.</small>
+          <small>For platform inquiries, visit the <a href="/contact">Contact and support page</a>.</small>
         </section>
 
         <section className="closing-section" id="get-started">
@@ -332,7 +334,7 @@ function LandingPage() {
       <footer className="site-footer">
         <a className="brand footer-brand" href="/" aria-label="UrQrPrint home"><span className="brand-mark"><QrCode size={18} /></span><span>UrQrPrint<span className="brand-period">.</span></span></a>
         <span>Thoughtful tools for your local print shop.</span>
-        <nav className="site-footer-links" aria-label="Footer navigation"><a href="/features">Features</a><a href="/how-it-works">How it works</a><a href="/pricing">Pricing</a><a href="/solutions">Solutions</a><a href="/printing-software">Print by city</a><a href="/blog">Guides</a><a href="/faq">FAQ</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/partner">Partner</a><a href="/terms">Terms</a><a href="/privacy-policy">Privacy</a><a href="/refund-policy">Refund policy</a></nav>
+        <nav className="site-footer-links" aria-label="Footer navigation"><a href="/features">Features</a><a href="/how-it-works">How it works</a><a href="/pricing">Pricing</a><a href="/solutions">Solutions</a><a href="/printing-software">Print by city</a><a href="/blog">Guides</a><a href="/faq">FAQ</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/partner">Partner</a><a href="/terms">Terms</a><a href="/privacy-policy">Privacy</a><a href="/refund-policy">Refund policy</a><a href="/delivery-policy">Delivery policy</a></nav>
         <span>© {new Date().getFullYear()} UrQrPrint</span>
       </footer>
     </div>
