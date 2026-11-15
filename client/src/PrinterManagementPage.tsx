@@ -77,6 +77,17 @@ declare global {
   }
 }
 
+const AGENT_INSTALLER_SHARE_URL = "https://drive.google.com/file/d/19Wq3kzb1dcJLujsiWawTnvYzBCaU7FUG/view?usp=sharing";
+
+function getAgentInstallerDownloadUrl() {
+  const shareUrl = new URL(AGENT_INSTALLER_SHARE_URL);
+  const fileId = shareUrl.searchParams.get("id") ?? shareUrl.pathname.match(/\/file\/d\/([^/]+)/)?.[1];
+  if (shareUrl.hostname === "drive.google.com" && fileId) {
+    return `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download&confirm=t`;
+  }
+  return AGENT_INSTALLER_SHARE_URL;
+}
+
 const allPaperSizes: PaperSize[] = ["A4", "Legal", "A5", "A3"];
 
 const formatRate = (paise?: number) => {
@@ -527,9 +538,9 @@ export function PrinterManagementPage() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button
-                type="button"
-                onClick={() => setHowToModalOpen(true)}
+              <a
+                href={getAgentInstallerDownloadUrl()}
+                aria-label="Download the UrQrPrint Windows agent installer"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -543,10 +554,11 @@ export function PrinterManagementPage() {
                   fontWeight: 600,
                   cursor: "pointer",
                   boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                  textDecoration: "none",
                 }}
               >
                 <Download size={14} style={{ color: "#64748b" }} /> Download agent
-              </button>
+              </a>
             </div>
           </div>
 
