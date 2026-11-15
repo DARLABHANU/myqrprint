@@ -21,7 +21,7 @@ let busy = false;
 let tray: Tray | null = null;
 let isQuitting = false;
 const pendingPrints = new Map<string, { window: BrowserWindow; printerName: string; options: ReturnType<typeof leasedPrintJobSchema.parse>['options']; resolve: () => void; reject: (error: Error) => void }>();
-const productionWebUrl = 'https://myqrprint.vercel.app';
+const productionWebUrl = 'https://www.urqrprint.shop';
 const renderApiUrl = 'https://printly-api.onrender.com';
 const pauseJobPolling = process.env.PRINTLY_PAUSE_JOB_POLLING === '1';
 function isAllowedOrigin(origin: string): boolean {
@@ -29,7 +29,7 @@ function isAllowedOrigin(origin: string): boolean {
   if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin)) return true;
   try {
     const host = new URL(origin).hostname;
-    return host === 'myqrprint.vercel.app';
+    return host === 'www.urqrprint.shop' || host === 'urqrprint.shop' || host === 'myqrprint.vercel.app';
   } catch { return false; }
 }
 
@@ -48,10 +48,10 @@ function emitStatus(extra: Record<string, unknown> = {}) {
   mainWindow?.webContents.send('agent:status-changed', { connected: Boolean(connection && sessionAuthenticated), deviceName: connection?.deviceName, shopName: connection?.shopName, agentVersion: VERSION, ...extra });
 }
 async function api(path: string, init: RequestInit = {}) {
-  if (!connection || !sessionAuthenticated) throw new Error('Sign in to Printly in this desktop app to connect this computer.');
+  if (!connection || !sessionAuthenticated) throw new Error('Sign in to UrQrPrint in this desktop app to connect this computer.');
   const response = await fetch(new URL(path, connection.apiUrl), { ...init, headers: { Authorization: `Bearer ${connection.token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } });
   if (!response.ok && response.status !== 204) {
-    const message = (await response.json().catch(() => ({})) as {error?:string}).error ?? `Printly server returned ${response.status}.`;
+    const message = (await response.json().catch(() => ({})) as {error?:string}).error ?? `UrQrPrint server returned ${response.status}.`;
     if (response.status === 401) { connection = null; sessionAuthenticated = false; if (pollTimer) clearInterval(pollTimer); await rm(credentialsPath(), { force: true }); emitStatus({ error: message }); }
     throw new Error(message);
   }
@@ -263,7 +263,7 @@ declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    title: 'Printly',
+    title: 'UrQrPrint',
     width: 1320,
     height: 900,
     minWidth: 980,
@@ -326,11 +326,11 @@ app.whenReady().then(async () => {
   app.setLoginItemSettings({ openAtLogin: true });
   const iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#079c73"/><path fill="#fff" d="M8 8h6v6H8zm10 0h6v6h-6zM8 18h6v6H8zm10 10V18h6v6h-6z"/></svg>';
   tray = new Tray(nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(iconSvg)}`));
-  tray.setToolTip('Printly Agent');
+  tray.setToolTip('UrQrPrint Agent');
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open Printly Agent', click: () => { if (!mainWindow) createWindow(); mainWindow?.show(); mainWindow?.focus(); } },
+    { label: 'Open UrQrPrint Agent', click: () => { if (!mainWindow) createWindow(); mainWindow?.show(); mainWindow?.focus(); } },
     { type: 'separator' },
-    { label: 'Quit Printly Agent', click: () => { isQuitting = true; app.quit(); } },
+    { label: 'Quit UrQrPrint Agent', click: () => { isQuitting = true; app.quit(); } },
   ]));
   tray.on('double-click', () => { if (!mainWindow) createWindow(); mainWindow?.show(); mainWindow?.focus(); });
   app.on('activate', () => { if (!mainWindow) createWindow(); });
@@ -386,7 +386,7 @@ ipcMain.handle('agent:open-external', async (_event, url: string) => {
 ipcMain.handle('agent:connect', async (event) => {
   let senderOrigin = '';
   try { senderOrigin = new URL(event.sender.getURL()).origin; } catch { /* reject below */ }
-  if (!isAllowedOrigin(senderOrigin) || !senderOrigin) throw new Error('Desktop sign-in can only connect from Printly.');
+  if (!isAllowedOrigin(senderOrigin) || !senderOrigin) throw new Error('Desktop sign-in can only connect from UrQrPrint.');
   if (connection && sessionAuthenticated) {
     return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
   }
@@ -406,7 +406,7 @@ ipcMain.handle('agent:connect', async (event) => {
   });
   const body = await response.json() as { error?: string; deviceId?: string; deviceName?: string; accessToken?: string; shop?: { displayName?: string } };
   if (!response.ok) throw new Error(body.error ?? 'Could not connect this desktop to your shop.');
-  if (!body.deviceId || !body.accessToken || !body.deviceName || !body.shop?.displayName) throw new Error('Printly returned incomplete desktop connection details.');
+  if (!body.deviceId || !body.accessToken || !body.deviceName || !body.shop?.displayName) throw new Error('UrQrPrint returned incomplete desktop connection details.');
   connection = { apiUrl, token: body.accessToken, deviceName: body.deviceName, shopName: body.shop.displayName, deviceId: body.deviceId };
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure storage is unavailable on this computer.');
   await writeFile(credentialsPath(), safeStorage.encryptString(JSON.stringify(connection)));

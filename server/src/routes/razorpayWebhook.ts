@@ -55,7 +55,7 @@ razorpayWebhookRouter.post("/", async (request: Request, response: Response, nex
       response.status(400).json({ error: "Razorpay payment did not match the print order." });
       return;
     }
-    if (!result.found) console.warn("Razorpay captured webhook did not match a Printly order.", payment.order_id);
+    if (!result.found) console.warn("Razorpay captured webhook did not match a UrQrPrint order.", payment.order_id);
     response.status(200).json({ received: true });
   } catch (error) {
     if (error instanceof SyntaxError) {

@@ -1,4 +1,4 @@
-# Printly
+# UrQrPrint
 
 A multi-shop print-order web app built with React, Vite, Express, TypeScript, and MongoDB.
 
@@ -67,7 +67,7 @@ with a 7-day free trial (50 orders), and can upgrade to Starter (300 orders),
 Professional (1,500 orders), or Enterprise (unlimited) via direct platform UPI
 payment and UTR verification in `/admin/subscriptions`. Customer orders enforce
 subscription validity and quotas. Razorpay checkout is test-mode only. Captured
-payments are collected by the configured Printly Razorpay account; linked-account
+payments are collected by the configured UrQrPrint Razorpay account; linked-account
 shop payouts through Razorpay Route are not implemented.
 
 ## Razorpay test checkout

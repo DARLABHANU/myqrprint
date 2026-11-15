@@ -145,7 +145,7 @@ export async function markRazorpayPaymentCaptured(input: {
     });
     await order.save();
   } else if (order.razorpayPaymentId && order.razorpayPaymentId !== input.paymentId) {
-    console.error("Rejected a second Razorpay payment for already-paid Printly order", order.publicCode);
+    console.error("Rejected a second Razorpay payment for already-paid UrQrPrint order", order.publicCode);
     return { found: true as const, matched: false as const };
   }
   return { found: true as const, matched: true as const, order };

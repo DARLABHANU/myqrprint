@@ -139,9 +139,9 @@ function LandingPage() {
   return (
     <div className="site-shell">
       <header className="site-header">
-        <a className="brand" href="/" aria-label="Printly home" onClick={closeMenu}>
+        <a className="brand" href="/" aria-label="UrQrPrint home" onClick={closeMenu}>
           <span className="brand-mark"><QrCode size={21} strokeWidth={2.2} /></span>
-          <span>printly<span className="brand-period">.</span></span>
+          <span>UrQrPrint<span className="brand-period">.</span></span>
         </a>
 
         <button
@@ -291,7 +291,7 @@ function LandingPage() {
             <h2>A few things<br /><span>worth knowing.</span></h2>
           </div>
           <div className="marketing-faq-list">
-            <details><summary>Does Printly process or hold customer payments?</summary><p>No. Customers pay your shop directly using your UPI details or pay cash at the counter. You verify payment yourself before approving a job.</p></details>
+            <details><summary>Does UrQrPrint process or hold customer payments?</summary><p>No. Customers pay your shop directly using your UPI details or pay cash at the counter. You verify payment yourself before approving a job.</p></details>
             <details><summary>Who sets the print prices?</summary><p>You configure prices by paper size, colour, and single- or double-sided printing. The server calculates the customer’s quote from those saved rates.</p></details>
             <details><summary>What files can customers upload?</summary><p>Customers can submit PDF documents or JPG, PNG, and WEBP photos. Uploads are private, validated, and limited to 10 files at up to 25 MB per file.</p></details>
             <details><summary>How long are uploaded files retained?</summary><p>Each shop sets a pending-file retention period in its settings. Files for active jobs remain available until the order is completed or cancelled.</p></details>
@@ -301,7 +301,7 @@ function LandingPage() {
         </section>
 
         <section className="marketing-contact-section" id="contact">
-          <div><div className="eyebrow eyebrow-light"><span className="eyebrow-dot" /> Need help?</div><h2>For a print order,<br /><span>talk to the shop.</span></h2><p>Printly sends orders to the local shop you selected. Use the contact details on that shop’s page for pickup or payment questions.</p></div>
+          <div><div className="eyebrow eyebrow-light"><span className="eyebrow-dot" /> Need help?</div><h2>For a print order,<br /><span>talk to the shop.</span></h2><p>UrQrPrint sends orders to the local shop you selected. Use the contact details on that shop’s page for pickup or payment questions.</p></div>
           <a className="button button-light button-large" href="/register">Set up your shop <ArrowRight size={16} /></a>
           <small>Platform support contact details are not configured in this development build.</small>
         </section>
@@ -321,17 +321,17 @@ function LandingPage() {
           </div>
           <div className="closing-art" aria-hidden="true">
             <div className="closing-ring ring-a" /><div className="closing-ring ring-b" />
-            <div className="closing-printer"><div className="printer-top"><div className="printer-light" /><span>printly.</span></div><div className="printer-paper"><div /><div /><div /><div /></div><div className="printer-slot" /><div className="printer-base"><div className="printer-button" /><span /></div></div>
+            <div className="closing-printer"><div className="printer-top"><div className="printer-light" /><span>UrQrPrint.</span></div><div className="printer-paper"><div /><div /><div /><div /></div><div className="printer-slot" /><div className="printer-base"><div className="printer-button" /><span /></div></div>
             <div className="paper-float"><FileText size={25} /><span>READY TO PRINT</span><b>See you at the counter.</b></div>
           </div>
         </section>
       </main>
 
       <footer className="site-footer">
-        <a className="brand footer-brand" href="/" aria-label="Printly home"><span className="brand-mark"><QrCode size={18} /></span><span>printly<span className="brand-period">.</span></span></a>
+        <a className="brand footer-brand" href="/" aria-label="UrQrPrint home"><span className="brand-mark"><QrCode size={18} /></span><span>UrQrPrint<span className="brand-period">.</span></span></a>
         <span>Thoughtful tools for your local print shop.</span>
         <nav className="site-footer-links" aria-label="Footer navigation"><a href="/features">Features</a><a href="/how-it-works">How it works</a><a href="/pricing">Pricing</a><a href="/solutions">Solutions</a><a href="/printing-software">Print by city</a><a href="/blog">Guides</a><a href="/faq">FAQ</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/partner">Partner</a><a href="/terms">Terms</a><a href="/privacy-policy">Privacy</a><a href="/refund-policy">Refund policy</a></nav>
-        <span>© {new Date().getFullYear()} Printly</span>
+        <span>© {new Date().getFullYear()} UrQrPrint</span>
       </footer>
     </div>
   );

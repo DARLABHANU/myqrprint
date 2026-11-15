@@ -459,7 +459,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
       order_id: checkout.orderId,
       amount: checkout.amount,
       currency: checkout.currency,
-      name: "Printly",
+      name: "UrQrPrint",
       description: `Print order #${orderCode}`,
       theme: { color: "#079c73" },
       handler: async (result: RazorpayCheckoutResult) => {
@@ -697,7 +697,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
   // Standard NPCI Personal UPI Payment URI
   const currentAmount = order ? order.amountPaise / 100 : quote ? quote.amountPaise / 100 : 0;
   const upiLink = shop.upiId
-    ? `upi://pay?pa=${encodeURIComponent(shop.upiId)}&pn=${encodeURIComponent(shop.displayName)}${currentAmount > 0 ? `&am=${currentAmount.toFixed(2)}` : ""}&cu=INR&tn=${encodeURIComponent(order ? `Printly Order ${order.code}` : `Print at ${shop.displayName}`)}`
+    ? `upi://pay?pa=${encodeURIComponent(shop.upiId)}&pn=${encodeURIComponent(shop.displayName)}${currentAmount > 0 ? `&am=${currentAmount.toFixed(2)}` : ""}&cu=INR&tn=${encodeURIComponent(order ? `UrQrPrint Order ${order.code}` : `Print at ${shop.displayName}`)}`
     : "";
   const razorpayPaymentPending = order?.paymentMethod === "razorpay" && order.paymentStatus !== "paid";
 
@@ -751,7 +751,7 @@ export function CustomerOrderPage({ slug }: { slug: string }) {
               <QrCode size={17} />
             </div>
             <span style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.4px" }}>
-              QrToPrint
+              UrQrPrint
             </span>
           </div>
 

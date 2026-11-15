@@ -69,7 +69,7 @@ export function SubscriptionPage() {
   const [plans, setPlans] = useState<Record<SubscriptionPlanId, PlanConfig> | null>(null);
   const [platformPayment, setPlatformPayment] = useState<{ upiId: string; accountName: string }>({
     upiId: "daarlabhanumurthy@okaxis",
-    accountName: "Printly Platform",
+    accountName: "UrQrPrint Platform",
   });
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -120,7 +120,7 @@ export function SubscriptionPage() {
     const amount = (payableAmountPaise / 100).toFixed(2);
     const pa = encodeURIComponent(platformPayment.upiId);
     const pn = encodeURIComponent(platformPayment.accountName);
-    const tn = encodeURIComponent(`Printly ${selectedPlan?.name ?? ""} Plan`);
+    const tn = encodeURIComponent(`UrQrPrint ${selectedPlan?.name ?? ""} Plan`);
     return `upi://pay?pa=${pa}&pn=${pn}&am=${amount}&cu=INR&tn=${tn}`;
   }, [platformPayment, payableAmountPaise, selectedPlan]);
 
@@ -185,7 +185,7 @@ export function SubscriptionPage() {
         <header className="support-page-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
           <div>
             <h1>Shop Subscription & Plans</h1>
-            <p>Manage your Printly plan, view order quotas, and upgrade your shop capacity.</p>
+            <p>Manage your UrQrPrint plan, view order quotas, and upgrade your shop capacity.</p>
           </div>
           <button
             type="button"

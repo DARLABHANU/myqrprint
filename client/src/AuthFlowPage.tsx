@@ -110,7 +110,7 @@ export function AuthFlowPage({ flow }: { flow: Flow }) {
     <div className="legal-page">
       <a className="brand account-brand" href="/">
         <span className="brand-mark"><QrCode size={20} /></span>
-        <span>printly<span className="brand-period">.</span></span>
+        <span>UrQrPrint<span className="brand-period">.</span></span>
       </a>
       <main className="legal-card">
         <a className="back-link" href="/login"><ArrowLeft size={15} /> Back to sign in</a>

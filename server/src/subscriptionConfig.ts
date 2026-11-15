@@ -83,7 +83,7 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, PlanConfig> = {
 };
 
 export const PLATFORM_UPI_ID = process.env.PLATFORM_UPI_ID || "daarlabhanumurthy@okaxis";
-export const PLATFORM_ACCOUNT_NAME = process.env.PLATFORM_ACCOUNT_NAME || "Printly Platform";
+export const PLATFORM_ACCOUNT_NAME = process.env.PLATFORM_ACCOUNT_NAME || "UrQrPrint Platform";
 
 export function getPlanConfig(planId: string): PlanConfig {
   return SUBSCRIPTION_PLANS[planId as SubscriptionPlanId] ?? SUBSCRIPTION_PLANS.demo;

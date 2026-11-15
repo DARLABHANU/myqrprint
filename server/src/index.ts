@@ -13,13 +13,13 @@ if (!mongoUri) {
 }
 
 async function start() {
-  console.log("[Printly Server] Connecting to database...");
+  console.log("[UrQrPrint Server] Connecting to database...");
   await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 8000 });
-  console.log("[Printly Server] Connected to MongoDB.");
+  console.log("[UrQrPrint Server] Connected to MongoDB.");
   if (isCloudinaryEnabled()) {
-    console.log("[Printly Server] Cloudinary media storage connected and active.");
+    console.log("[UrQrPrint Server] Cloudinary media storage connected and active.");
   } else {
-    console.log("[Printly Server] Cloudinary not configured; using local storage.");
+    console.log("[UrQrPrint Server] Cloudinary not configured; using local storage.");
   }
   await cleanupExpiredUploads();
   const cleanupTimer = setInterval(() => {
@@ -33,7 +33,7 @@ async function start() {
   }, 60 * 1000);
   summaryTimer.unref();
   app.listen(port, "0.0.0.0", () => {
-    console.log(`[Printly Server] API listening on http://localhost:${port}`);
+    console.log(`[UrQrPrint Server] API listening on http://localhost:${port}`);
   });
 }
 

@@ -117,7 +117,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
       if (window.printly) {
         const status = await window.printly.getStatus();
         if (!status.connected) {
-          if (!window.printly.connect) throw new Error("This desktop app is outdated. Install the latest Printly desktop app to connect with your shop login.");
+          if (!window.printly.connect) throw new Error("This desktop app is outdated. Install the latest UrQrPrint desktop app to connect with your shop login.");
           await window.printly.connect();
           const refreshedShop = await json<{ shop: ShopSummary; agentOnline?: boolean }>("/api/shops/me");
           setShop({ ...refreshedShop.shop, agentOnline: Boolean(refreshedShop.agentOnline) });
@@ -165,7 +165,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
             const message = messages.join(" · ");
             setAlertMessage(message);
             window.setTimeout(() => setAlertMessage((currentMessage) => currentMessage === message ? "" : currentMessage), 8000);
-            if ("Notification" in window && Notification.permission === "granted") new Notification("Printly · Shop alert", { body: message });
+            if ("Notification" in window && Notification.permission === "granted") new Notification("UrQrPrint · Shop alert", { body: message });
             if ("speechSynthesis" in window) {
               const phrases = [
                 ...(newlyCreated.length && preferences?.newOrder ? ["New order received."] : []),
@@ -271,7 +271,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
 
   return <div className={`shop-dashboard-shell${sidebarCollapsed ? " is-collapsed" : ""}${isDesktopAgent ? " is-desktop-agent" : " is-web-readonly"}`} style={{ gridTemplateColumns: sidebarCollapsed ? "72px minmax(0,1fr)" : "244px minmax(0,1fr)", transition: "grid-template-columns 0.2s ease" }}>
     <aside className={`shop-dashboard-sidebar${mobileNavOpen ? " is-open" : ""}${sidebarCollapsed ? " is-collapsed" : ""}`} style={{ width: sidebarCollapsed ? 72 : 244, transition: "width 0.2s ease", padding: sidebarCollapsed ? "17px 8px 12px" : "17px 14px 12px" }}>
-      <a className="shop-dashboard-brand" href="/dashboard" style={{ justifyContent: sidebarCollapsed ? "center" : "flex-start", padding: sidebarCollapsed ? 0 : "0 10px" }}><span className="brand-mark"><QrCode size={19} /></span>{!sidebarCollapsed && <b>Printly</b>}</a>
+      <a className="shop-dashboard-brand" href="/dashboard" style={{ justifyContent: sidebarCollapsed ? "center" : "flex-start", padding: sidebarCollapsed ? 0 : "0 10px" }}><span className="brand-mark"><QrCode size={19} /></span>{!sidebarCollapsed && <b>UrQrPrint</b>}</a>
       <button className="shop-sidebar-close" type="button" aria-label="Close menu" onClick={() => setMobileNavOpen(false)}><X size={18} /></button>
       <div className="shop-sidebar-identity" style={{ padding: sidebarCollapsed ? "8px 0" : "10px 8px", justifyContent: sidebarCollapsed ? "center" : "flex-start" }}><span className="shop-sidebar-avatar"><Store size={17} /></span>{!sidebarCollapsed && <div><b>{shop?.displayName ?? "Your print shop"}</b><small>{shopAcceptingOrders ? "Shop online" : "Shop offline"}</small></div>}</div>
       {navGroups.map((group) => <nav className="shop-sidebar-group" key={group.label} aria-label={group.label === "MAIN" ? "Main" : "Shop"}>
@@ -426,7 +426,7 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
       <main className="shop-dashboard-content">
         {error && <div className="shop-shell-error" role="alert">{error}</div>}
         {loading && <div className="shop-shell-loading" aria-hidden="true" />}
-        {!isDesktopAgent && <div role="status" style={{ margin: "0 0 16px", padding: "12px 16px", border: "1px solid #cfe8df", borderRadius: 12, background: "#effaf5", color: "#315f50", fontSize: 13, lineHeight: 1.5 }}><b>Read-only dashboard.</b> Manage printers, print jobs, and shop availability in the Printly desktop agent. Customers can place orders only while the agent is connected and the shop is set online there.</div>}
+        {!isDesktopAgent && <div role="status" style={{ margin: "0 0 16px", padding: "12px 16px", border: "1px solid #cfe8df", borderRadius: 12, background: "#effaf5", color: "#315f50", fontSize: 13, lineHeight: 1.5 }}><b>Read-only dashboard.</b> Manage printers, print jobs, and shop availability in the UrQrPrint desktop agent. Customers can place orders only while the agent is connected and the shop is set online there.</div>}
         <div className={`shop-dashboard-inner${settingTabs.length ? " has-setting-tabs" : ""}`}>
           {settingTabs.length > 0 && <nav className="shop-settings-tabs" aria-label={isSettingRoute ? "Setting" : "My Profile"}>{settingTabs.map(([label, href]) => <a key={href} className={path === href || (href.endsWith("/page") && path === "/dashboard/setting") || (href.endsWith("/profile") && path === "/dashboard/settings") ? "active" : ""} href={href}>{label}</a>)}</nav>}
           <fieldset className="shop-dashboard-view-fieldset" disabled={!isDesktopAgent} style={{ border: 0, margin: 0, minWidth: 0, padding: 0, width: "100%" }}><div className="shop-dashboard-view">{children}</div></fieldset>

@@ -26,7 +26,7 @@ export async function sendDailyShopSummaries(now = new Date()): Promise<void> {
     const orderCount = total[0]?.orders ?? 0;
     const pages = total[0]?.pages ?? 0;
     const earnings = paid[0]?.paise ?? 0;
-    await sendAccountEmail(shop.email, `${shop.displayName}: daily shop summary`, `Daily summary for ${date}\n\nOrders: ${orderCount}\nSource pages: ${pages}\nPayments manually confirmed: ₹${(earnings / 100).toFixed(2)}\n\nThis summary includes only orders created today in India Standard Time. Payments are recorded after you confirm them in Printly.`);
+    await sendAccountEmail(shop.email, `${shop.displayName}: daily shop summary`, `Daily summary for ${date}\n\nOrders: ${orderCount}\nSource pages: ${pages}\nPayments manually confirmed: ₹${(earnings / 100).toFixed(2)}\n\nThis summary includes only orders created today in India Standard Time. Payments are recorded after you confirm them in UrQrPrint.`);
     shop.lastDailySummaryDate = date;
     await shop.save();
   }

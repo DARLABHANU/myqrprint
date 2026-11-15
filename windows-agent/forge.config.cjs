@@ -6,8 +6,8 @@ module.exports = {
     onlyModules: [],
   },
   outDir: 'out/v0.1.1',
-  packagerConfig: { asar: true, executableName: 'PrintlyAgent', appBundleId: 'in.co.printly.agent' },
-  makers: [{ name: '@electron-forge/maker-squirrel', config: { name: 'PrintlyAgent', authors: 'Printly', description: 'Printly Windows printer agent' } }],
+  packagerConfig: { asar: true, executableName: 'UrQrPrintAgent', appBundleId: 'in.co.urqrprint.agent' },
+  makers: [{ name: '@electron-forge/maker-squirrel', config: { name: 'UrQrPrintAgent', authors: 'UrQrPrint', description: 'UrQrPrint Windows printer agent' } }],
   plugins: [{ name: '@electron-forge/plugin-vite', config: {
     build: [
       { entry: 'src/main.ts', config: 'vite.main.config.ts' },

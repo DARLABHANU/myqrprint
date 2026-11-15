@@ -315,12 +315,12 @@ export function OrderManagementPage() {
   function printReceipt(order: MerchantOrder) {
     const receipt = window.open("", "_blank", "width=620,height=760");
     if (!receipt) { setError("Allow pop-ups to print the order receipt."); return; }
-    receipt.document.title = `Printly order ${order.code}`;
+    receipt.document.title = `UrQrPrint order ${order.code}`;
     const style = receipt.document.createElement("style");
     style.textContent = "body{font:15px Arial,sans-serif;color:#17241f;max-width:680px;margin:32px auto;padding:20px}h1{font-size:24px}.muted{color:#637068}.line{border-top:1px solid #dfe7df;margin:16px 0;padding-top:12px}.total{font-size:22px;font-weight:bold}@media print{button{display:none}}";
     receipt.document.head.append(style);
     const main = receipt.document.createElement("main");
-    const heading = receipt.document.createElement("h1"); heading.textContent = shop?.displayName ?? "Printly shop";
+    const heading = receipt.document.createElement("h1"); heading.textContent = shop?.displayName ?? "UrQrPrint shop";
     const title = receipt.document.createElement("h2"); title.textContent = `Order #${order.code}`;
     const date = receipt.document.createElement("p"); date.className = "muted"; date.textContent = new Date(order.createdAt).toLocaleString();
     const customer = receipt.document.createElement("p"); customer.textContent = [order.customerName, order.customerMobile].filter(Boolean).join(" · ") || "Customer details not collected";

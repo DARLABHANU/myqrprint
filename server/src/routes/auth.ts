@@ -105,7 +105,7 @@ authRouter.post("/register", authLimiter, async (request, response, next) => {
     pending.attempts = 0;
     await pending.save();
     try {
-      await sendAccountEmail(email, "Your Printly registration code", `Your Printly verification code is ${code}. It expires in 10 minutes. If you did not request it, you can ignore this email.`);
+      await sendAccountEmail(email, "Your UrQrPrint registration code", `Your UrQrPrint verification code is ${code}. It expires in 10 minutes. If you did not request it, you can ignore this email.`);
     } catch (mailError) {
       await PendingRegistration.deleteOne({ email });
       const code = typeof mailError === "object" && mailError !== null && "code" in mailError ? String(mailError.code) : "unknown";
@@ -234,7 +234,7 @@ authRouter.post("/resend-verification", authLimiter, async (request, response, n
       await user.save();
       const link = new URL("/verify-email", request.get("origin") ?? "http://localhost:5173");
       link.searchParams.set("email", user.email); link.searchParams.set("token", token);
-      await sendAccountEmail(user.email, "Verify your Printly email", `Verify your email within 30 minutes: ${link.toString()}`);
+      await sendAccountEmail(user.email, "Verify your UrQrPrint email", `Verify your email within 30 minutes: ${link.toString()}`);
     }
     response.json({ message: "If the account needs verification, a new link has been sent." });
   } catch (error) { next(error); }
@@ -252,7 +252,7 @@ authRouter.post("/forgot-password", authLimiter, async (request, response, next)
       await user.save();
       const link = new URL("/reset-password", request.get("origin") ?? "http://localhost:5173");
       link.searchParams.set("email", user.email); link.searchParams.set("token", token);
-      await sendAccountEmail(user.email, "Reset your Printly password", `Reset your password within 30 minutes: ${link.toString()}`);
+      await sendAccountEmail(user.email, "Reset your UrQrPrint password", `Reset your password within 30 minutes: ${link.toString()}`);
     }
     response.json({ message: "If an account exists for that email, password reset instructions have been sent." });
   } catch (error) { next(error); }

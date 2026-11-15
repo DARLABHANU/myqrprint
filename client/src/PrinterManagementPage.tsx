@@ -507,7 +507,7 @@ export function PrinterManagementPage() {
             <div>
               <h2 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: 0 }}>Connected PCs</h2>
               <p style={{ fontSize: 12, color: "#64748b", margin: "3px 0 0" }}>
-                {onlineDevices.length} of {devices.length} online · computers running the QrToPrint agent
+                {onlineDevices.length} of {devices.length} online · computers running the UrQrPrint agent
               </p>
             </div>
 
@@ -551,7 +551,7 @@ export function PrinterManagementPage() {
               <p style={{ color: "#64748b", fontSize: 12, margin: "4px auto 0", maxWidth: 440 }}>
                 {isInsideElectron
                   ? "Sign in with your shop account in the desktop app. This computer connects automatically and discovers its Windows printers."
-                  : "Open the Printly desktop app on the computer connected to your printers, then sign in with this shop account. It will connect automatically."}
+                  : "Open the UrQrPrint desktop app on the computer connected to your printers, then sign in with this shop account. It will connect automatically."}
               </p>
             </div>
           ) : (
@@ -1028,7 +1028,7 @@ export function PrinterManagementPage() {
                 No printers added
               </b>
               <p style={{ color: "#64748b", fontSize: 13, maxWidth: 440, margin: "0 auto 20px", lineHeight: 1.5 }}>
-                Open the QrToPrint desktop app on the computer your printers are connected to, then add them here.
+                Open the UrQrPrint desktop app on the computer your printers are connected to, then add them here.
               </p>
 
               <button
@@ -1238,9 +1238,9 @@ export function PrinterManagementPage() {
                     1
                   </span>
                   <div>
-                    <b>Run the Printly Desktop Agent on your Windows PC</b>
+                    <b>Run the UrQrPrint Desktop Agent on your Windows PC</b>
                     <p style={{ margin: "2px 0 0", color: "#64748b" }}>
-                      Run <code>npm run dev -w windows-agent</code> or launch the installed <code>PrintlyAgent.exe</code>.
+                      Run <code>npm run dev -w windows-agent</code> or launch the installed <code>UrQrPrintAgent.exe</code>.
                     </p>
                   </div>
                 </div>

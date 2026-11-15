@@ -63,7 +63,7 @@ const faqGroups = [
   {
     name: "General",
     questions: [
-      ["What is Printly?", "Printly gives a local print shop a QR-based order page and a dashboard to review and manage customer print jobs."],
+      ["What is UrQrPrint?", "UrQrPrint gives a local print shop a QR-based order page and a dashboard to review and manage customer print jobs."],
       ["Do customers need to install an app?", "No. Customers open the shop page in their phone browser and upload from there."],
       ["What files can a customer upload?", "The current order flow supports PDF documents and common photo formats, with up to 10 files per order."],
     ],
@@ -80,7 +80,7 @@ const faqGroups = [
     name: "Payments",
     questions: [
       ["Who receives print-order payments?", "Customers pay the shop directly by UPI or cash. A shopkeeper confirms payment in the order queue."],
-      ["Does Printly take a per-order commission?", "The customer print-payment flow is direct to the shop; it does not route customer funds through Printly."],
+      ["Does UrQrPrint take a per-order commission?", "The customer print-payment flow is direct to the shop; it does not route customer funds through UrQrPrint."],
     ],
   },
   {
@@ -93,9 +93,9 @@ const faqGroups = [
   {
     name: "Pricing & plans",
     questions: [
-      ["What shop subscriptions are available?", "Printly offers a 7-day Free Trial (up to 50 orders), Starter (₹199/mo, 300 orders), Professional (₹499/mo, 1,500 orders), and Enterprise (₹999/mo, unlimited orders)."],
+      ["What shop subscriptions are available?", "UrQrPrint offers a 7-day Free Trial (up to 50 orders), Starter (₹199/mo, 300 orders), Professional (₹499/mo, 1,500 orders), and Enterprise (₹999/mo, unlimited orders)."],
       ["How do I pay for my shop subscription?", "You can pay via any UPI app (GPay, PhonePe, Paytm, BHIM) by scanning our platform UPI QR code, then submit the 12-digit UTR in your shop dashboard for quick verification."],
-      ["Does Printly take a cut of customer print orders?", "No. Customers pay your shop directly by UPI or cash at your counter. Printly takes 0% commission on your print jobs."],
+      ["Does UrQrPrint take a cut of customer print orders?", "No. Customers pay your shop directly by UPI or cash at your counter. UrQrPrint takes 0% commission on your print jobs."],
     ],
   },
 ] as const;
@@ -320,7 +320,7 @@ const pageContent: Record<string, MarketingPage> = {
       { title: "1. Share your shop QR", body: "Download or print the shop QR code and place it at your counter." },
       { title: "2. Upload and choose options", body: "Customers upload PDFs or photos, choose page ranges, copies, paper size, colour, and sides, then review their quote." },
       { title: "3. Pay the shop", body: "Customers pay the shop directly by UPI or choose cash at the counter when enabled." },
-      { title: "4. Review and fulfill manually", body: "The shop confirms payment, approves the paid order, and handles fulfillment outside Printly while printer automation is paused." },
+      { title: "4. Review and fulfill manually", body: "The shop confirms payment, approves the paid order, and handles fulfillment outside UrQrPrint while printer automation is paused." },
       { title: "5. Collect and clean up", body: "The order status and pickup code help the customer collect the job; file cleanup follows the shop's retention settings." },
     ],
   },
@@ -330,7 +330,7 @@ const pageContent: Record<string, MarketingPage> = {
     category: "features",
     sections: [
       { title: "Free 7-day evaluation", body: "Every new shop begins with a 7-day free trial with up to 50 customer orders. No credit card required." },
-      { title: "Direct UPI & cash payments", body: "Customers pay your shop directly via your own UPI ID or counter cash. Printly takes 0% commission on your customer orders." },
+      { title: "Direct UPI & cash payments", body: "Customers pay your shop directly via your own UPI ID or counter cash. UrQrPrint takes 0% commission on your customer orders." },
       { title: "Upgrade anytime", body: "Move to Starter, Professional, or Enterprise as your order volume grows, with simple UPI-based subscription activation." },
     ],
   },
@@ -341,8 +341,8 @@ const pageContent: Record<string, MarketingPage> = {
     sections: [],
   },
   "/about": {
-    title: "About Printly",
-    intro: "Printly helps local print shops move customer file handoffs into a clear, QR-based ordering and shop-management workflow.",
+    title: "About UrQrPrint",
+    intro: "UrQrPrint helps local print shops move customer file handoffs into a clear, QR-based ordering and shop-management workflow.",
     category: "about",
     sections: [
       { title: "Built for local counters", body: "The workflow is designed for cyber cafes, photocopy and print shops, service centers, colleges, and libraries." },
@@ -360,7 +360,7 @@ const pageContent: Record<string, MarketingPage> = {
     ],
   },
   "/partner": {
-    title: "Partner with Printly",
+    title: "Partner with UrQrPrint",
     intro: "Help local print businesses adopt a more organized customer-order workflow.",
     category: "partner",
     sections: [
@@ -417,7 +417,7 @@ const pageContent: Record<string, MarketingPage> = {
   },
   "/refund-policy": {
     title: "Refund policy",
-    intro: "Customer print payments are made directly to the shop; Printly does not process those customer order payments.",
+    intro: "Customer print payments are made directly to the shop; UrQrPrint does not process those customer order payments.",
     category: "legal",
     sections: [
       { title: "Print-order payments", body: "The shop and customer should resolve any refund or reprint request for a direct UPI or cash payment with the shop that fulfilled the order." },
@@ -519,7 +519,7 @@ export function PublicMarketingPages({ path }: { path: string }) {
   const articleCategory = blogCategories.find((category) => category.slug === article?.category);
 
   useEffect(() => {
-    document.title = page ? `${page.title} | Printly` : "Page not found | Printly";
+    document.title = page ? `${page.title} | UrQrPrint` : "Page not found | UrQrPrint";
     const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     if (description && page) description.content = page.intro;
   }, [normalized]);
@@ -530,9 +530,9 @@ export function PublicMarketingPages({ path }: { path: string }) {
     <div className={`public-marketing-page public-page-${isPricing ? "pricing" : isFaq ? "faq" : isSolutions ? "solutions" : isCityIndex || isCityPage ? "seo" : "content"}`}>
       <a className="public-skip-link" href="#main">Skip to content</a>
       <header className="site-header public-site-header">
-        <a className="brand" href="/" aria-label="Printly home" onClick={() => setMenuOpen(false)}>
+        <a className="brand" href="/" aria-label="UrQrPrint home" onClick={() => setMenuOpen(false)}>
           <span className="brand-mark"><QrCode size={21} /></span>
-          <span>printly<span className="brand-period">.</span></span>
+          <span>UrQrPrint<span className="brand-period">.</span></span>
         </a>
         <button className="menu-toggle" type="button" aria-expanded={menuOpen} aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen((open) => !open)}>
           {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -574,7 +574,7 @@ export function PublicMarketingPages({ path }: { path: string }) {
 
             <section className="public-page-hero">
               <div className="public-page-hero-copy">
-                <div className="public-eyebrow"><span />{isCityIndex || isCityPage ? "LOCAL PRINT ORDERING" : isSolutions ? "BUILT FOR YOUR COUNTER" : isPricing ? "TRANSPARENT PLANS" : isFaq ? "HELP & ANSWERS" : "THE PRINTLY PLATFORM"}</div>
+                <div className="public-eyebrow"><span />{isCityIndex || isCityPage ? "LOCAL PRINT ORDERING" : isSolutions ? "BUILT FOR YOUR COUNTER" : isPricing ? "TRANSPARENT PLANS" : isFaq ? "HELP & ANSWERS" : "THE URQRPRINT PLATFORM"}</div>
                 <h1>{page.title}</h1>
                 <p>{page.intro}</p>
                 <div className="public-hero-actions">
@@ -794,12 +794,12 @@ export function PublicMarketingPages({ path }: { path: string }) {
       </main>
 
       <footer className="public-site-footer">
-        <a className="brand" href="/" aria-label="Printly home"><span className="brand-mark"><QrCode size={19} /></span><span>printly<span className="brand-period">.</span></span></a>
+        <a className="brand" href="/" aria-label="UrQrPrint home"><span className="brand-mark"><QrCode size={19} /></span><span>UrQrPrint<span className="brand-period">.</span></span></a>
         <p>Simple online ordering for local print shops.</p>
         <nav aria-label="Footer navigation">
           <a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/solutions">Solutions</a><a href="/faq">FAQ</a><a href="/printing-software">Print by city</a><a href="/blog">Guides</a><a href="/contact">Contact</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/refund-policy">Refund policy</a>
         </nav>
-        <small>© {new Date().getFullYear()} Printly. Built for local print shops.</small>
+        <small>© {new Date().getFullYear()} UrQrPrint. Built for local print shops.</small>
       </footer>
     </div>
   );

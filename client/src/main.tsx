@@ -53,7 +53,7 @@ if (typeof window !== "undefined") {
     console.error("%c[UNHANDLED PROMISE]", "color: #dc2626; font-weight: bold;", event.reason);
   });
 
-  console.log("%c[Printly UI] Frontend logger active. Monitoring all routes and API calls.", "color: #7c3aed; font-weight: bold;");
+  console.log("%c[UrQrPrint UI] Frontend logger active. Monitoring all routes and API calls.", "color: #7c3aed; font-weight: bold;");
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

@@ -92,7 +92,7 @@ export function DashboardTools({ kind }: { kind: "payments" | "reports" }) {
     const rows = [["Order", "Date", "Method", "Payment status", "Job status", "Amount"], ...visibleOrders.map((o) => [o.code, o.createdAt, o.paymentMethod, o.paymentStatus, o.status, (o.amountPaise / 100).toFixed(2)])];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a"); link.href = url; link.download = `printly-${kind}.csv`; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement("a"); link.href = url; link.download = `urqrprint-${kind}.csv`; link.click(); URL.revokeObjectURL(url);
   }
   async function confirmCash(order: ReportOrder, note = "") {
     setBusyOrder(order.id); setError(""); setNotice("");

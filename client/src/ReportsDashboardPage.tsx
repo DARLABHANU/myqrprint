@@ -274,7 +274,7 @@ export function ReportsDashboardPage() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `printly-reports-${range}days.csv`;
+    link.download = `urqrprint-reports-${range}days.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
