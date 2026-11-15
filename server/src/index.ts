@@ -24,12 +24,45 @@ async function start() {
     console.log("[UrQrPrint Server] Cloudinary not configured; using local storage.");
   }
   await expireDisconnectedAgents();
-  await refreshDailySettlementRequests();
-  const settlementsTimer = setInterval(() => {
-    void refreshDailySettlementRequests().catch((error: unknown) => {
+  // Render may restart the service after the scheduled time. In that case,
+  // run once on startup to catch up; otherwise generate requests at 10:30 IST.
+  const settlementTimezone = "Asia/Kolkata";
+  const getIndiaDateAndMinute = (date: Date) => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: settlementTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "00";
+    return {
+      dateKey: `${part("year")}-${part("month")}-${part("day")}`,
+      minuteOfDay: Number(part("hour")) * 60 + Number(part("minute")),
+    };
+  };
+  let lastSettlementRunDate = "";
+  let settlementRefreshRunning = false;
+  const runDailySettlementsIfDue = async () => {
+    const { dateKey, minuteOfDay } = getIndiaDateAndMinute(new Date());
+    if (minuteOfDay < 10 * 60 + 30 || lastSettlementRunDate === dateKey || settlementRefreshRunning) return;
+    settlementRefreshRunning = true;
+    try {
+      await refreshDailySettlementRequests();
+      lastSettlementRunDate = dateKey;
+      console.log(`[UrQrPrint Server] Daily settlement requests refreshed for ${dateKey} (Asia/Kolkata).`);
+    } catch (error) {
       console.error("Could not refresh daily shop settlements:", error);
-    });
-  }, 60 * 1000);
+    } finally {
+      settlementRefreshRunning = false;
+    }
+  };
+  await runDailySettlementsIfDue();
+  const settlementsTimer = setInterval(() => {
+    void runDailySettlementsIfDue();
+  }, 30 * 1000);
   settlementsTimer.unref();
   const agentPresenceTimer = setInterval(() => {
     void expireDisconnectedAgents().catch((error: unknown) => {

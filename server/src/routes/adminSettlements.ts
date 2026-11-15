@@ -5,7 +5,7 @@ import { isValidObjectId } from "mongoose";
 import { z } from "zod";
 import { DailySettlement } from "../models/DailySettlement.js";
 import { Shop } from "../models/Shop.js";
-import { previousIndiaDateKey, refreshDailySettlementRequests } from "../services/dailySettlements.js";
+import { previousIndiaDateKey } from "../services/dailySettlements.js";
 
 export const adminSettlementsRouter = Router();
 const accessTokenLifetimeMs = 12 * 60 * 60 * 1000;
@@ -83,7 +83,6 @@ adminSettlementsRouter.use(requireAdminAccess);
 
 adminSettlementsRouter.get("/", async (request, response, next) => {
   try {
-    await refreshDailySettlementRequests();
     const parsedDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).safeParse(request.query.date);
     const dateKey = parsedDate.success ? parsedDate.data : previousIndiaDateKey();
     const settlements = await DailySettlement.find({ dateKey })
