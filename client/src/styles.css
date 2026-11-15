@@ -1335,6 +1335,12 @@ h1, h2, h3, p { margin-top: 0; }
 .settlement-shop-row-bottom > div small { color:#8290a5; font-size:9px; }
 .settlement-shop-row-bottom > div small b { color:#40516a; }
 .settlement-shop-row-bottom button { min-height:34px; }
+.settlement-qr-upload { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-top:14px; padding-top:14px; border-top:1px solid #edf0f4; }
+.settlement-qr-upload>div { display:grid; justify-items:start; gap:7px; }
+.settlement-qr-upload>div>b { color:#334155; font-size:12px; }
+.settlement-qr-upload>div>small { color:#8290a5; font-size:10px; line-height:1.5; }
+.settlement-qr-preview,.settlement-shop-uploaded-qr { width:112px; height:112px; object-fit:contain; border:1px solid #e2e8f0; border-radius:10px; background:#fff; padding:6px; }
+.settlement-shop-uploaded-qr { display:block; margin-top:8px; }
 @media(max-width:680px) { .admin-settlements-content { width:calc(100% - 24px); margin-top:18px; }.admin-settlements-heading { align-items:flex-start; flex-direction:column; }.settlement-summary-grid { grid-template-columns:1fr; }.settlement-list-card > header { align-items:flex-start; flex-direction:column; }.settlement-transfer-details { flex-wrap:wrap; gap:14px; }.settlement-upi-qr { margin-left:0; }.settlement-mark-form { align-items:stretch; flex-direction:column; }.settlement-mark-form p { margin-top:4px; }.settlement-shop-heading,.settlement-shop-row-top { align-items:flex-start; flex-direction:column; }.settlement-shop-row-bottom,.settlement-shop-row-bottom > div { align-items:flex-start; flex-direction:column; }.settlement-shop-info { align-items:flex-start; flex-wrap:wrap; }.settlement-shop-info a { margin-left:0; } }
 .wallet-receipts-card .wallet-card-heading > a { display:flex; align-items:center; gap:5px; color:#078c68; text-decoration:none; font-size:10px; font-weight:700; }
 @media(max-width:1000px) {

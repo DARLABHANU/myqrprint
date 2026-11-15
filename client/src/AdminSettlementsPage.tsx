@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Check, CircleAlert, ExternalLink, LockKeyhole, LogOut, RefreshCw, Wallet } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
-type ShopSummary = { displayName: string; slug: string; ownerName: string; mobile: string; email: string; upiId: string };
+type ShopSummary = { displayName: string; slug: string; ownerName: string; mobile: string; email: string; upiId?: string; settlementUpiId?: string; settlementQrDataUrl?: string };
 type Settlement = {
   _id: string;
   dateKey: string;
@@ -11,6 +11,7 @@ type Settlement = {
   status: "pending" | "sent" | "received";
   paymentMode?: "test" | "live";
   upiId: string;
+  upiQrDataUrl?: string;
   transferReference?: string;
   sentAt?: string;
   receivedAt?: string;
@@ -87,7 +88,7 @@ export function AdminSettlementsPage() {
     if (!accessToken) { setError("Open the private settlement URL provided to the administrator."); return; }
     const simulation = row.paymentMode !== "live";
     const reference = (references[row._id] ?? "").trim();
-    if ((!simulation && !row.shopId?.upiId) || !reference) { setError(!reference ? (simulation ? "Enter a simulation reference first." : "Enter the transfer UTR/reference first.") : "This shop needs a UPI ID before it can be settled."); return; }
+    if ((!simulation && !(row.upiId || row.shopId?.settlementUpiId)) || !reference) { setError(!reference ? (simulation ? "Enter a simulation reference first." : "Enter the transfer UTR/reference first.") : "This shop needs a settlement UPI ID before it can be settled."); return; }
     const confirmMessage = simulation
       ? `Simulate a transfer of ${formatMoney(row.amountPaise)} for ${row.shopId.displayName}? No money will move. The shopkeeper can confirm the simulated receipt.`
       : `Confirm you transferred ${formatMoney(row.amountPaise)} to ${row.shopId.displayName}? The shopkeeper will be asked to confirm receipt.`;
@@ -121,12 +122,14 @@ export function AdminSettlementsPage() {
       <section className="settings-card settlement-list-card"><header className="wallet-card-heading"><div><h2>Settlement requests</h2><p>Amounts are gross captured Razorpay payments. No fee deduction is configured.</p></div><label className="settlement-date-field">Business date<input type="date" value={dateKey} onChange={(event) => { const value = event.target.value; setDateKey(value); if (value) void load(value); }}/></label></header>
         {loading ? <div className="wallet-history-empty">Loading settlement requests…</div> : rows.length === 0 ? <div className="wallet-history-empty"><Wallet size={24}/><b>No captured Razorpay collections for this date</b><span>Requests are created automatically after the business day closes in India time.</span></div> : <div className="settlement-admin-list">{rows.map((row) => {
           const testMode = row.paymentMode !== "live";
-          const upiLink = !testMode && row.shopId?.upiId ? `upi://pay?${new URLSearchParams({ pa: row.shopId.upiId, pn: row.shopId.displayName, am: (row.amountPaise / 100).toFixed(2), cu: "INR", tn: `UrQrPrint settlement ${row.dateKey}` })}` : "";
+          const settlementUpiId = row.upiId || row.shopId?.settlementUpiId || row.shopId?.upiId || "";
+          const uploadedQr = row.upiQrDataUrl || row.shopId?.settlementQrDataUrl || "";
+          const upiLink = !testMode && settlementUpiId ? `upi://pay?${new URLSearchParams({ pa: settlementUpiId, pn: row.shopId.displayName, am: (row.amountPaise / 100).toFixed(2), cu: "INR", tn: `UrQrPrint settlement ${row.dateKey}` })}` : "";
           return <article className="settlement-admin-row" key={row._id}>
             <div className="settlement-shop-heading"><div><small>{formatDate(row.dateKey)} · {row.orderCount} Razorpay order{row.orderCount === 1 ? "" : "s"}</small><h3>{row.shopId?.displayName ?? "Shop"}</h3><p>{row.shopId?.ownerName} · {row.shopId?.mobile} · {row.shopId?.email}</p></div><span className={`settlement-status ${testMode ? "test" : row.status}`}>{testMode ? row.status === "pending" ? "Test mode · no real funds" : row.status === "sent" ? "Simulated · awaiting confirmation" : "Simulation confirmed" : row.status === "pending" ? "Awaiting transfer" : row.status === "sent" ? "Awaiting shop confirmation" : "Receipt confirmed"}</span></div>
-            <div className="settlement-transfer-details"><div className="settlement-amount"><small>{testMode ? row.status === "pending" ? "Test amount · simulation only" : "Simulated amount · no payout" : "Exact transfer amount"}</small><b>{formatMoney(row.amountPaise)}</b><span>{testMode ? "Razorpay test payment · no money moved" : "Gross captured amount · no fee deduction"}</span></div><div className="settlement-upi"><small>Shop UPI ID</small><b>{row.shopId?.upiId || "Not configured"}</b>{upiLink && <a href={upiLink}><ExternalLink size={13}/> Open UPI app</a>}</div>{row.status === "pending" && !testMode && row.shopId?.upiId && <QRCodeSVG className="settlement-upi-qr" value={upiLink} size={108} level="M" includeMargin/>}</div>
+            <div className="settlement-transfer-details"><div className="settlement-amount"><small>{testMode ? row.status === "pending" ? "Test amount · simulation only" : "Simulated amount · no payout" : "Exact transfer amount"}</small><b>{formatMoney(row.amountPaise)}</b><span>{testMode ? "Razorpay test payment · no money moved" : "Gross captured amount · no fee deduction"}</span></div><div className="settlement-upi"><small>Shop settlement UPI ID</small><b>{settlementUpiId || "Not configured"}</b>{upiLink && <a href={upiLink}><ExternalLink size={13}/> Open UPI app</a>}{uploadedQr && <img className="settlement-shop-uploaded-qr" src={uploadedQr} alt={`Uploaded UPI QR for ${row.shopId?.displayName || "shop"}`}/>}</div>{row.status === "pending" && !testMode && settlementUpiId && <QRCodeSVG className="settlement-upi-qr" value={upiLink} size={108} level="M" includeMargin/>}</div>
             {row.status === "pending" && testMode && <div className="settlement-test-notice"><CircleAlert size={14}/> Test payment only. Use “Simulate transfer” to exercise shop confirmation; this will not send or record real money.</div>}
-            {row.status === "pending" && <div className="settlement-mark-form"><label>{testMode ? "Simulation reference (not a bank UTR)" : "Transfer UTR / reference"}<input value={references[row._id] ?? ""} onChange={(event) => setReferences((current) => ({ ...current, [row._id]: event.target.value }))} minLength={6} maxLength={40} placeholder={testMode ? "e.g. TEST-SETTLEMENT-001" : "Enter bank / UPI transfer reference"}/></label><button type="button" disabled={busyId === row._id || (!testMode && !row.shopId?.upiId) || (references[row._id] ?? "").trim().length < 6} onClick={() => void markSent(row)}><Check size={15}/>{busyId === row._id ? "Saving…" : testMode ? "Simulate transfer" : "Mark transfer sent"}</button>{!testMode && !row.shopId?.upiId && <p><CircleAlert size={14}/> Ask the shopkeeper to add a UPI ID in Payment settings before settling.</p>}</div>}
+            {row.status === "pending" && <div className="settlement-mark-form"><label>{testMode ? "Simulation reference (not a bank UTR)" : "Transfer UTR / reference"}<input value={references[row._id] ?? ""} onChange={(event) => setReferences((current) => ({ ...current, [row._id]: event.target.value }))} minLength={6} maxLength={40} placeholder={testMode ? "e.g. TEST-SETTLEMENT-001" : "Enter bank / UPI transfer reference"}/></label><button type="button" disabled={busyId === row._id || (!testMode && !settlementUpiId) || (references[row._id] ?? "").trim().length < 6} onClick={() => void markSent(row)}><Check size={15}/>{busyId === row._id ? "Saving…" : testMode ? "Simulate transfer" : "Mark transfer sent"}</button>{!testMode && !settlementUpiId && <p><CircleAlert size={14}/> Ask the shopkeeper to add a settlement UPI ID in Payment settings before settling.</p>}</div>}
             {row.status !== "pending" && <div className="settlement-reference"><span>{testMode ? "Simulation reference · not a bank UTR" : "Transfer reference"}</span><b>{row.transferReference || "—"}</b>{testMode && <span>No real money moved.</span>}{row.sentAt && <span>{testMode ? "Simulated " : "Sent "}{new Date(row.sentAt).toLocaleString()}</span>}{row.receivedAt && <span>{testMode ? "Shop confirmed simulation " : "Shop confirmed "}{new Date(row.receivedAt).toLocaleString()}</span>}</div>}
           </article>;
         })}</div>}

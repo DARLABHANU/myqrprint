@@ -17,10 +17,10 @@ shopSettlementsRouter.use(requireOwner);
 
 shopSettlementsRouter.get("/", async (request, response, next) => {
   try {
-    const shop = await Shop.findOne({ ownerId: request.session.userId }).select("_id upiId");
+    const shop = await Shop.findOne({ ownerId: request.session.userId }).select("_id upiId settlementUpiId settlementQrDataUrl");
     if (!shop) { response.status(404).json({ error: "Shop not found." }); return; }
     const settlements = await DailySettlement.find({ shopId: shop._id }).sort({ dateKey: -1 }).limit(90).populate("sentBy", "ownerName email").populate("receivedBy", "ownerName email");
-    response.json({ upiId: shop.upiId ?? "", settlements });
+    response.json({ upiId: shop.settlementUpiId || shop.upiId || "", settlements });
   } catch (error) { next(error); }
 });
 

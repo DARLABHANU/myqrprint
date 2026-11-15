@@ -33,6 +33,15 @@ const shopSettingsSchema = z.object({
     "Enter a valid UPI ID, for example shop@bank.",
   ),
   upiEnabled: z.boolean(),
+  settlementUpiId: z.string().trim().max(100).refine(
+    (value) => value === "" || /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z0-9.-]{2,64}$/.test(value),
+    "Enter a valid settlement UPI ID, for example shop@bank.",
+  ),
+  settlementQrDataUrl: z.string().max(700000).refine(
+    (value) => value === "" || /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value),
+    "Upload a PNG, JPG or WEBP UPI QR image.",
+  ),
+  razorpayEnabled: z.boolean(),
   cashEnabled: z.boolean(),
   autoPrint: z.boolean().default(false),
   isOnline: z.boolean(),
@@ -60,11 +69,11 @@ const shopSettingsSchema = z.object({
   if (value.upiEnabled && !value.upiId) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["upiId"], message: "Enter your UPI ID before enabling UPI." });
   }
-  if (!value.cashEnabled && !(value.upiEnabled && value.upiId)) {
+  if (!value.cashEnabled && !value.razorpayEnabled) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["upiId"],
-      message: "Add a UPI ID or enable cash at counter.",
+      path: ["razorpayEnabled"],
+      message: "Enable Razorpay or cash at counter so customers have a payment method.",
     });
   }
   if (value.locationLockEnabled && (value.locationLatitude === undefined || value.locationLongitude === undefined)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["locationLatitude"], message: "Set the shop location before enabling location lock." });

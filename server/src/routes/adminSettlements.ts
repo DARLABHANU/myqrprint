@@ -86,7 +86,7 @@ adminSettlementsRouter.get("/", async (request, response, next) => {
     const parsedDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).safeParse(request.query.date);
     const dateKey = parsedDate.success ? parsedDate.data : previousIndiaDateKey();
     const settlements = await DailySettlement.find({ dateKey })
-      .populate("shopId", "displayName slug ownerName mobile email upiId")
+      .populate("shopId", "displayName slug ownerName mobile email upiId settlementUpiId settlementQrDataUrl")
       .populate("sentBy", "ownerName email")
       .populate("receivedBy", "ownerName email")
       .sort({ status: 1, shopName: 1 });
@@ -114,13 +114,13 @@ adminSettlementsRouter.post("/:id/mark-sent", async (request, response, next) =>
       return;
     }
     if (pending.amountPaise !== body.data.expectedAmountPaise) { response.status(409).json({ error: "The settlement total changed. Refresh the page and verify the current amount before transferring." }); return; }
-    const shop = await Shop.findById(pending.shopId).select("upiId");
-    if (!isTestMode && !shop?.upiId?.trim()) { response.status(409).json({ error: "Add a UPI ID to this shop before recording its settlement payment." }); return; }
+    const shop = await Shop.findById(pending.shopId).select("upiId settlementUpiId");
+    if (!isTestMode && !(shop?.settlementUpiId?.trim() || shop?.upiId?.trim())) { response.status(409).json({ error: "Ask the shopkeeper to add a settlement UPI ID before recording the transfer." }); return; }
     const settlement = await DailySettlement.findOneAndUpdate(
       { _id: id.data, status: "pending", amountPaise: body.data.expectedAmountPaise },
       { $set: { status: "sent", transferReference: body.data.transferReference, sentAt: new Date(), sentByMethod: isTestMode ? "test_simulation" : "private_admin_link" } },
       { new: true, runValidators: true },
-    ).populate("shopId", "displayName slug upiId");
+    ).populate("shopId", "displayName slug upiId settlementUpiId settlementQrDataUrl");
     if (!settlement) { response.status(409).json({ error: "This settlement is no longer awaiting payment." }); return; }
     response.json({ message: isTestMode ? "Test transfer simulated. No money moved; the shopkeeper can confirm the simulated receipt." : "Transfer recorded. The shopkeeper can now confirm receipt.", settlement });
   } catch (error) { next(error); }

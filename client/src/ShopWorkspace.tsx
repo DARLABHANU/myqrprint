@@ -53,6 +53,8 @@ type ShopSettings = {
   gstin: string;
   upiId: string;
   upiEnabled: boolean;
+  settlementUpiId: string;
+  settlementQrDataUrl: string;
   cashEnabled: boolean;
   razorpayEnabled?: boolean;
   autoPrint: boolean;
@@ -101,7 +103,10 @@ function createEmptyShop(): ShopSettings {
     gstin: "",
     upiId: "",
     upiEnabled: false,
+    settlementUpiId: "",
+    settlementQrDataUrl: "",
     cashEnabled: true,
+    razorpayEnabled: true,
     autoPrint: false,
     isOnline: false,
     locationLockEnabled: false,
@@ -309,7 +314,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
   const sectionTitles: Record<string, [string, string]> = {
     "print-options": ["Page setting", "Choose paper sizes and set print rates — customers see the exact price as soon as they upload."],
     discounts: ["Discount setting", "Set discounts for larger print orders."],
-    "payment-settings": ["Payment setting", "Choose how customers pay for print orders."],
+    "payment-settings": ["Payment setting", "Choose customer checkout and set your shop’s settlement destination."],
     "location-lock": ["Location lock", "Limit orders to customers near your shop."],
     "customer-details": ["Order form", "Choose what customer details you collect at order time."],
     notifications: ["Notifications", "Choose the alerts you receive for shop activity."],
@@ -321,6 +326,7 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
   const [shop, setShop] = useState<ShopSettings>(createEmptyShop);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [gatewayConfigured, setGatewayConfigured] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [copyingShopLink, setCopyingShopLink] = useState(false);
@@ -341,7 +347,8 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
         setUser(account);
         const { shop: savedShop, agentOnline, razorpayEnabled } = await requestJson<{ shop: ShopSettings; agentOnline?: boolean; razorpayEnabled?: boolean }>("/api/shops/me");
         const rates = { ...createEmptyShop().rates, ...savedShop.rates };
-        setShop({ ...createEmptyShop(), ...savedShop, razorpayEnabled: Boolean(razorpayEnabled), agentOnline: Boolean(agentOnline), autoPrint: savedShop.autoPrint ?? false, upiEnabled: savedShop.upiEnabled ?? Boolean(savedShop.upiId), discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
+        setGatewayConfigured(Boolean(razorpayEnabled));
+        setShop({ ...createEmptyShop(), ...savedShop, razorpayEnabled: savedShop.razorpayEnabled ?? Boolean(razorpayEnabled), agentOnline: Boolean(agentOnline), autoPrint: savedShop.autoPrint ?? false, settlementUpiId: savedShop.settlementUpiId || savedShop.upiId || "", settlementQrDataUrl: savedShop.settlementQrDataUrl ?? "", upiEnabled: false, discountTiers: savedShop.discountTiers ?? [], discountGroups: savedShop.discountGroups ?? [], notificationPreferences: { ...createEmptyShop().notificationPreferences, ...savedShop.notificationPreferences }, rates });
       } catch (reason) {
         if (reason instanceof Error && reason.message.includes("Sign in")) {
           window.location.assign("/login");
@@ -382,6 +389,28 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
     finally { URL.revokeObjectURL(objectUrl); }
   }
 
+  async function setSettlementQrFromFile(file?: File) {
+    if (!file) return;
+    setError(""); setNotice("");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 500 * 1024) {
+      setError("Choose a PNG, JPG or WEBP UPI QR image under 500 KB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string" || reader.result.length > 700000) { setError("This QR image is too large to save. Choose an image under 500 KB."); return; }
+      updateShop("settlementQrDataUrl", reader.result);
+      setNotice("Settlement QR image added. Save changes to apply it.");
+    };
+    reader.onerror = () => setError("Could not read the UPI QR image.");
+    reader.readAsDataURL(file);
+  }
+
+  function clearSettlementQr() {
+    updateShop("settlementQrDataUrl", "");
+    setNotice("Settlement QR image removed. Save changes to apply it.");
+  }
+
   function updateRate(size: string, key: keyof Rate, amount: string) {
     const rupees = amount === "" ? 0 : Number(amount);
     const paise = Number.isFinite(rupees) && rupees >= 0 ? Math.round(rupees * 100) : 0;
@@ -417,8 +446,11 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
           state: shop.state,
           pincode: shop.pincode,
           gstin: shop.gstin,
-          upiId: shop.upiId,
-          upiEnabled: shop.upiEnabled,
+          upiId: "",
+          upiEnabled: false,
+          settlementUpiId: shop.settlementUpiId,
+          settlementQrDataUrl: shop.settlementQrDataUrl,
+          razorpayEnabled: shop.razorpayEnabled ?? true,
           cashEnabled: shop.cashEnabled,
           autoPrint: shop.autoPrint,
           isOnline: shop.isOnline,
@@ -696,54 +728,11 @@ export function ShopSettingsPage({ initialSection }: { initialSection?: string }
             <section className="settings-card" id="payment-settings">
               <div className="settings-card-heading"><span className="settings-icon"><CreditCard size={18} /></span><div><h2>Payment setting</h2><p>Choose which payment methods customers see on your order page.</p></div><span className="step-badge">03</span></div>
               <div className="payment-settings">
-                <article className="shop-payment-method"><div className="shop-payment-method-heading"><span className="shop-payment-symbol gateway"><Printer size={15}/></span><div><b>Auto print</b><small>Automatically send confirmed UPI orders to the printer</small></div><label className="toggle-switch-control"><input aria-label="Auto print UPI orders" type="checkbox" checked={shop.autoPrint} onChange={(event) => updateShop("autoPrint", event.target.checked)} /><i/></label></div><p className="shop-payment-help">When off, confirmed UPI orders wait for your approval. Cash orders always wait until you confirm cash at the counter.</p></article>
-                <article className={`shop-payment-method${shop.upiEnabled && shop.upiId ? " configured" : ""}`}>
-                  <div className="shop-payment-method-heading">
-                    <span className="shop-payment-symbol upi">▦</span>
-                    <div>
-                      <b>UPI payment</b>
-                      <small>Customer pays directly to your personal UPI account</small>
-                    </div>
-                    <label className="toggle-switch-control"><input aria-label="UPI payment" type="checkbox" checked={shop.upiEnabled} onChange={(event) => updateShop("upiEnabled", event.target.checked)} /><i/></label>
-                  </div>
-                  {shop.upiEnabled ? <label className="upi-field" htmlFor="upiId">
-                    Shop UPI ID
-                    <input
-                      id="upiId"
-                      autoComplete="off"
-                      placeholder="yourshop@okhdfcbank or 9876543210@paytm"
-                      value={shop.upiId}
-                      onChange={(event) => updateShop("upiId", event.target.value)}
-                    />
-                    <small>
-                      Enter your personal or business UPI ID. When customers place orders via UPI on your customer page, they will be prompted with your personal payment QR code generated for the exact bill amount.
-                    </small>
-                  </label> : <p className="shop-payment-help">UPI is hidden from customers until you turn it on.</p>}
-
-                  {shop.upiEnabled && shop.upiId ? (
-                    <div style={{ marginTop: 14, padding: "14px 16px", background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 16 }}>
-                      <div style={{ background: "#ffffff", padding: 8, borderRadius: 10, border: "1px solid #e2e8f0", display: "inline-block", flexShrink: 0 }}>
-                        <QRCodeSVG
-                          value={`upi://pay?pa=${encodeURIComponent(shop.upiId)}&pn=${encodeURIComponent(shop.displayName)}&cu=INR`}
-                          size={90}
-                          level="M"
-                        />
-                      </div>
-                      <div>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
-                          <Check size={12} /> Personal Payment QR
-                        </div>
-                        <b style={{ display: "block", fontSize: 13, color: "#0f172a" }}>UPI: {shop.upiId}</b>
-                        <span style={{ fontSize: 11, color: "#64748b", display: "block", marginTop: 2, lineHeight: 1.4 }}>
-                          This is your personal payment receiving QR code (not the front-counter customer ordering QR). Customers scan this to transfer order payments directly to your bank account.
-                        </span>
-                      </div>
-                    </div>
-                  ) : null}
-                </article>
+                <article className="shop-payment-method"><div className="shop-payment-method-heading"><span className="shop-payment-symbol gateway"><Printer size={15}/></span><div><b>Auto print paid orders</b><small>Automatically send confirmed Razorpay orders to the printer</small></div><label className="toggle-switch-control"><input aria-label="Auto print paid orders" type="checkbox" checked={shop.autoPrint} onChange={(event) => updateShop("autoPrint", event.target.checked)} /><i/></label></div><p className="shop-payment-help">When off, paid Razorpay orders wait for your approval. Cash orders always wait until you confirm payment at the counter.</p></article>
+                <article className={`shop-payment-method${shop.razorpayEnabled ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol gateway"><CreditCard size={15}/></span><div><b>Razorpay checkout</b><small>Customer UPI · cards · netbanking · wallets</small></div><label className="toggle-switch-control"><input aria-label="Razorpay checkout" type="checkbox" checked={Boolean(shop.razorpayEnabled)} onChange={(event) => updateShop("razorpayEnabled", event.target.checked)} /><i/></label></div><p className="shop-payment-help">{shop.razorpayEnabled ? gatewayConfigured ? "Enabled. Customers pay UrQrPrint through the configured Razorpay gateway; captured payments are included in daily shop settlements." : "Enabled for this shop, but customer checkout stays unavailable until Razorpay keys are configured on the backend." : "Disabled. Customers will not be offered Razorpay checkout for this shop."}</p></article>
                 <article className={`shop-payment-method${shop.cashEnabled ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol cash">⌂</span><div><b>Cash at counter</b><small>Customer pays when they collect the print</small></div><label className="toggle-switch-control"><input type="checkbox" checked={shop.cashEnabled} onChange={(event) => updateShop("cashEnabled", event.target.checked)} /><i/></label></div>{shop.cashEnabled && <p className="shop-payment-help">Orders stay marked as unpaid until you collect cash and confirm the payment.</p>}</article>
-                <article className={`shop-payment-method shop-payment-gateway-hold${shop.razorpayEnabled ? " configured" : ""}`}><div className="shop-payment-method-heading"><span className="shop-payment-symbol gateway"><CreditCard size={15}/></span><div><b>Razorpay</b><small>UPI · Cards · Netbanking · Wallet</small></div><span className="shop-payment-state">{shop.razorpayEnabled ? "Test mode ready" : "Needs test keys"}</span></div><p className="shop-payment-help">{shop.razorpayEnabled ? "Test checkout is available to customers. Test payments do not transfer real money." : "Add Razorpay test key ID and key secret to the backend environment to enable customer checkout."}</p></article>
-                <div className="payment-note"><ShieldCheck size={16} /> Razorpay payments are collected by the configured UrQrPrint gateway account. Shop payouts are not configured in this test integration.</div>
+                <article className="shop-payment-method settlement-payout-settings"><div className="shop-payment-method-heading"><span className="shop-payment-symbol upi">₹</span><div><b>Shop settlement details</b><small>Where the administrator sends your daily Razorpay collections</small></div></div><label className="upi-field" htmlFor="settlementUpiId">Your UPI ID<input id="settlementUpiId" autoComplete="off" placeholder="yourshop@okhdfcbank" value={shop.settlementUpiId} onChange={(event) => updateShop("settlementUpiId", event.target.value)} /><small>This UPI ID is only for shop settlements. Customers pay the platform through Razorpay; it is not shown as a customer payment option.</small></label><div className="settlement-qr-upload"><div><b>UPI payment QR code</b><small>Upload a PNG, JPG or WEBP image (max 500 KB). The administrator can view it when processing your settlement.</small><label className="qr-secondary-button shop-logo-upload"><ImageIcon size={14}/>{shop.settlementQrDataUrl ? "Replace QR image" : "Upload QR image"}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { void setSettlementQrFromFile(event.target.files?.[0]); event.target.value = ""; }}/></label>{shop.settlementQrDataUrl && <button type="button" className="shop-logo-remove" onClick={clearSettlementQr}>Remove QR image</button>}</div>{shop.settlementQrDataUrl && <img className="settlement-qr-preview" src={shop.settlementQrDataUrl} alt="Uploaded shop settlement UPI QR code"/>}</div></article>
+                <div className="payment-note"><ShieldCheck size={16} /> Customer payments go through Razorpay or cash at counter. Razorpay collections are settled to shops separately by the administrator.</div>
               </div>
             </section>
 

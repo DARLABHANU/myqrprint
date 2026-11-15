@@ -76,14 +76,15 @@ export async function refreshDailySettlementRequests(): Promise<void> {
     const existing = await DailySettlement.findOne({ shopId: group._id.shopId, dateKey: group._id.dateKey });
     if (existing?.status === "sent" || existing?.status === "received") continue;
 
-    const shop = await Shop.findById(group._id.shopId).select("displayName upiId");
+    const shop = await Shop.findById(group._id.shopId).select("displayName upiId settlementUpiId settlementQrDataUrl");
     if (!shop || group.amountPaise < 1) continue;
     const values = {
       amountPaise: group.amountPaise,
       orderCount: group.orderIds.length,
       orderIds: group.orderIds,
       shopName: shop.displayName,
-      upiId: shop.upiId ?? "",
+      upiId: shop.settlementUpiId || shop.upiId || "",
+      upiQrDataUrl: shop.settlementQrDataUrl ?? "",
       paymentMode: process.env.RAZORPAY_KEY_ID?.trim().startsWith("rzp_test_") ? "test" : "live",
     };
 

@@ -176,9 +176,10 @@ function publicShop(shop: InstanceType<typeof Shop> | null) {
     displayName: record.displayName,
     logoDataUrl: record.logoDataUrl ?? "",
     address: [record.address, record.city, record.state, record.pincode].filter(Boolean).join(", "),
-    upiId: (record.upiEnabled ?? Boolean(record.upiId)) ? record.upiId : "",
+    // Customer UPI transfers are disabled; payments go through Razorpay or cash.
+    upiId: "",
     cashEnabled: record.cashEnabled,
-    razorpayEnabled: isRazorpayEnabled(),
+    razorpayEnabled: isRazorpayEnabled() && record.razorpayEnabled !== false,
     enabledPaperSizes: record.enabledPaperSizes,
     colourEnabled: record.colourEnabled,
     duplexEnabled: record.duplexEnabled,
@@ -598,15 +599,15 @@ publicShopsRouter.post("/:slug/orders", orderLimiter, async (request, response, 
       response.status(200).json(customerOrderResponse(existing));
       return;
     }
-    if (parsed.data.paymentMethod === "upi" && (!(shop.upiEnabled ?? Boolean(shop.upiId)) || !shop.upiId)) {
-      response.status(400).json({ error: "UPI is not enabled for this shop." });
+    if (parsed.data.paymentMethod === "upi") {
+      response.status(400).json({ error: "Direct UPI checkout is unavailable. Choose Razorpay or cash at counter." });
       return;
     }
     if (parsed.data.paymentMethod === "cash" && !shop.cashEnabled) {
       response.status(400).json({ error: "Cash at counter is not enabled for this shop." });
       return;
     }
-    if (parsed.data.paymentMethod === "razorpay" && !isRazorpayEnabled()) {
+    if (parsed.data.paymentMethod === "razorpay" && (!isRazorpayEnabled() || shop.razorpayEnabled === false)) {
       response.status(503).json({ error: "Razorpay test checkout is not configured yet." });
       return;
     }
