@@ -518,7 +518,10 @@ h1, h2, h3, p { margin-top: 0; }
 .poster-steps section > label input[type=radio] { grid-row:span 2; align-self:center; accent-color:#079b70; }
 .poster-steps section > label small { color:#8290a3; font-size:9px; }
 .poster-steps section > label input:not([type=radio]),.poster-steps select { min-width:0; width:100%; min-height:34px; padding:0 9px; border:1px solid #e1e8ef; border-radius:7px; background:#fff; color:#3e4c60; }
+.poster-steps > section:nth-child(3) > label { grid-template-columns:minmax(0,1fr); gap:6px; justify-items:stretch; }
+.poster-steps > section:nth-child(3) > label > input,.poster-steps > section:nth-child(3) > label > select,.poster-steps > section:nth-child(3) > label > .poster-colours { grid-column:1; width:100%; min-width:0; }
 .poster-colours { display:flex; gap:7px; padding:8px 0; }
+.poster-steps > section:nth-child(3) .poster-colours { flex-wrap:wrap; align-items:center; }
 .poster-colours button { width:23px; height:23px; border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px #dbe3eb; cursor:pointer; }
 .poster-colours button.selected { box-shadow:0 0 0 2px #078c68; }
 .poster-steps section > button { width:100%; min-height:46px; display:grid; grid-template-columns:20px 1fr; align-items:center; gap:6px; padding:7px 10px; border:1px solid #e1e8ef; border-radius:9px; background:#fff; color:#34445a; text-align:left; font:650 10px "DM Sans",sans-serif; cursor:pointer; }
