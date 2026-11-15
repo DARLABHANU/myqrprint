@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
   Check,
@@ -24,6 +24,19 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 
 const publicCustomerOrigin = "https://www.urqrprint.shop";
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: { client_id: string; nonce: string; context: "signin" | "signup"; auto_select: false; callback: (response: { credential?: string }) => void }) => void;
+          renderButton: (parent: HTMLElement, options: { theme: "outline"; size: "large"; shape: "rectangular"; width: number; text: "continue_with" }) => void;
+        };
+      };
+    };
+  }
+}
 
 type User = {
   id: string;
@@ -214,6 +227,61 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+  const googleNonceRef = useRef("");
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? "";
+
+  useEffect(() => {
+    if (!googleClientId || !googleButtonRef.current || (isRegister && otpStage)) return;
+    let cancelled = false;
+    const initializeGoogle = () => {
+      if (cancelled || !window.google || !googleButtonRef.current) return;
+      googleNonceRef.current = crypto.randomUUID();
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        nonce: googleNonceRef.current,
+        context: isRegister ? "signup" : "signin",
+        auto_select: false,
+        callback: (result) => {
+          if (!result.credential) { setError("Google did not return a sign-in credential."); return; }
+          const formValues = valuesRef.current;
+          if (isRegister && !formValues.termsAccepted) {
+            setError("Accept the Terms and Privacy Notice before creating your account with Google.");
+            return;
+          }
+          setBusy(true);
+          setError("");
+          void requestJson<{ user: User }>(isRegister ? "/api/auth/google/register" : "/api/auth/google", {
+            method: "POST",
+            body: JSON.stringify(isRegister
+              ? { credential: result.credential, nonce: googleNonceRef.current, ownerName: formValues.ownerName, shopName: formValues.shopName, mobile: formValues.mobile, termsAccepted: formValues.termsAccepted }
+              : { credential: result.credential, nonce: googleNonceRef.current }),
+          }).then(() => window.location.assign("/dashboard"))
+            .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Google sign-in failed."))
+            .finally(() => setBusy(false));
+        },
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline", size: "large", shape: "rectangular", width: 360, text: "continue_with",
+      });
+    };
+    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+    if (window.google) initializeGoogle();
+    else if (existingScript) existingScript.addEventListener("load", initializeGoogle, { once: true });
+    else {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.onload = initializeGoogle;
+      script.onerror = () => setError("Google sign-in could not load. You can still use email and password.");
+      document.head.appendChild(script);
+    }
+    return () => { cancelled = true; };
+  }, [googleClientId, isRegister, otpStage]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -229,6 +297,7 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
         return;
       }
       if (!isRegister) {
+        setNeedsEmailVerification(false);
         await requestJson<{ user: User }>("/api/auth/login", {
           method: "POST",
           body: JSON.stringify({ email: values.email, password }),
@@ -244,10 +313,26 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
       setOtpCode("");
       setAccountNotice(result.message);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to sign in right now.");
+      const message = reason instanceof Error ? reason.message : "Unable to sign in right now.";
+      setNeedsEmailVerification(!isRegister && message.includes("Verify your email"));
+      setError(message);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function resendVerificationEmail() {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await requestJson<{ message: string }>("/api/auth/resend-verification", {
+        method: "POST",
+        body: JSON.stringify({ email: values.email }),
+      });
+      setAccountNotice(result.message);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not send the verification email.");
+    } finally { setBusy(false); }
   }
 
   async function resendRegistrationCode() {
@@ -290,6 +375,8 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
           {isRegister && otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => void resendRegistrationCode()}>Resend OTP</button>}
           {isRegister && otpStage && <button className="text-link" type="button" disabled={busy} onClick={() => { setOtpStage(false); setAccountNotice(""); setError(""); }}>Change registration details</button>}
         </form>
+        {needsEmailVerification && <button className="text-link" type="button" disabled={busy || !values.email} onClick={() => void resendVerificationEmail()}>Resend verification email</button>}
+        {googleClientId && !otpStage && <div className="google-sign-in"><span>{isRegister ? "or create your account with" : "or continue with"}</span><div ref={googleButtonRef} /></div>}
         <p className="account-switch">{isRegister ? "Already have an account?" : "New to UrQrPrint?"} <a href={isRegister ? "/login" : "/register"}>{isRegister ? "Sign in" : "Create an account"}</a></p>
         {!isRegister && <p className="account-switch"><a href="/forgot-password">Forgot your password?</a></p>}
         <div className="account-security"><ShieldCheck size={15} /> Your account is protected with a secure, private session.</div>

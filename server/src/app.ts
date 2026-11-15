@@ -16,6 +16,7 @@ import { adminSubscriptionsRouter } from "./routes/adminSubscriptions.js";
 import { razorpayWebhookRouter } from "./routes/razorpayWebhook.js";
 import { adminSettlementsRouter } from "./routes/adminSettlements.js";
 import { shopSettlementsRouter } from "./routes/shopSettlements.js";
+import { isMailConfigured } from "./services/mail.js";
 
 export const app = express();
 app.set("trust proxy", 1);
@@ -104,8 +105,11 @@ app.use(
       httpOnly: true,
       sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
       secure: process.env.NODE_ENV === "production",
-      maxAge: 1000 * 60 * 60 * 12,
+      // Keep shop owners signed in across browser and desktop-agent restarts.
+      // Rolling expiry renews this window while the account is actively used.
+      maxAge: 1000 * 60 * 60 * 24 * 30,
     },
+    rolling: true,
   }),
 );
 
@@ -141,6 +145,10 @@ app.get("/api/health", (_request, response) => {
   response.status(status).json({
     status: database === "connected" ? "ok" : "unavailable",
     database,
+    emailDelivery: process.env.NODE_ENV === "production"
+      ? isMailConfigured() ? "configured" : "not_configured"
+      : "development-console",
+    googleSignIn: process.env.GOOGLE_CLIENT_ID?.trim() ? "configured" : "not_configured",
   });
 });
 

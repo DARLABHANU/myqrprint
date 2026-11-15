@@ -175,6 +175,10 @@ h1, h2, h3, p { margin-top: 0; }
 .account-submit:disabled, .save-button:disabled, .quote-button:disabled { opacity: .7; cursor: wait; }
 .account-switch { margin: 19px 0; text-align: center; color: #7d8981; font-size: 10px; }
 .account-switch a { margin-left: 4px; color: #31734d; font-weight: 700; }
+.google-sign-in { display: grid; justify-items: center; gap: 10px; margin: 18px 0 4px; }
+.google-sign-in > span { display: flex; align-items: center; gap: 10px; width: 100%; color: #87928b; font-size: 10px; }
+.google-sign-in > span::before, .google-sign-in > span::after { content: ""; flex: 1; height: 1px; background: #e7ebe7; }
+.google-sign-in > div { min-height: 42px; }
 .account-security { display: flex; align-items: center; justify-content: center; gap: 7px; padding-top: 16px; border-top: 1px solid #edf0ec; color: #829087; font-size: 9px; }
 .account-security svg { color: #4a9364; }
 .account-footer { margin: 0; text-align: center; color: #8c9790; font-size: 10px; }

@@ -44,6 +44,25 @@ async function loadConnection() {
     connection = null;
   }
 }
+
+async function resumeSavedConnection() {
+  if (!connection) return;
+  // The device token is stored encrypted by Electron safeStorage. Validate it
+  // with the backend on every app launch; the embedded website login cookie
+  // can then remain independent from the print agent's device credentials.
+  sessionAuthenticated = true;
+  try {
+    await api('/api/agent/me');
+    await heartbeat();
+    if (!pauseJobPolling) startPolling();
+    console.log(`[AGENT] Resumed saved connection for ${connection.deviceName}.`);
+  } catch (error) {
+    console.warn('[AGENT] Saved connection could not be resumed:', error);
+    // Keep valid local credentials and let the normal poll loop retry transient
+    // network/server failures. api() clears the saved token on an explicit 401.
+    if (connection && sessionAuthenticated && !pauseJobPolling) startPolling();
+  }
+}
 function emitStatus(extra: Record<string, unknown> = {}) {
   mainWindow?.webContents.send('agent:status-changed', { connected: Boolean(connection && sessionAuthenticated), deviceName: connection?.deviceName, shopName: connection?.shopName, agentVersion: VERSION, ...extra });
 }
@@ -311,6 +330,7 @@ function createWindow() {
 }
 app.whenReady().then(async () => {
   await loadConnection();
+  await resumeSavedConnection();
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['https://*/*', 'http://*/*'] }, (details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
     try {

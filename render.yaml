@@ -15,6 +15,30 @@ services:
         generateValue: true
       - key: CLIENT_ORIGIN
         sync: false
+      - key: PUBLIC_WEB_ORIGIN
+        value: https://www.urqrprint.shop
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
       - key: ADMIN_EMAIL
         sync: false
       - key: PLATFORM_UPI_ID

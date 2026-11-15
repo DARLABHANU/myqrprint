@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import bcrypt from "bcryptjs";
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, randomInt, timingSafeEqual, verify as verifySignature } from "node:crypto";
 import rateLimit from "express-rate-limit";
 import { isValidObjectId } from "mongoose";
 import { z } from "zod";
@@ -67,6 +67,62 @@ const matchesDigest = (value: string, hash: string) => {
 const makeOtp = () => String(randomInt(100000, 1_000_000));
 const emailSchema = z.object({ email: z.string().email().max(254).transform((value) => value.toLowerCase().trim()) });
 const tokenSchema = z.string().regex(/^[a-f\d]{64}$/i);
+
+function accountLink(path: string, query: Record<string, string>): string {
+  const configuredOrigin = process.env.PUBLIC_WEB_ORIGIN?.trim();
+  const defaultOrigin = process.env.NODE_ENV === "production" ? "https://www.urqrprint.shop" : "http://localhost:5173";
+  const origin = new URL(configuredOrigin || defaultOrigin);
+  if (!['https:', 'http:'].includes(origin.protocol) || (process.env.NODE_ENV === "production" && origin.protocol !== "https:")) {
+    throw new Error("PUBLIC_WEB_ORIGIN must be an HTTPS website URL in production.");
+  }
+  const link = new URL(path, origin.origin);
+  for (const [key, value] of Object.entries(query)) link.searchParams.set(key, value);
+  return link.toString();
+}
+
+type GoogleJwk = { kid: string; kty: string; n: string; e: string; alg?: string; use?: string; [key: string]: unknown };
+type GoogleClaims = { iss?: string; aud?: string; sub?: string; email?: string; email_verified?: boolean; name?: string; exp?: number; nonce?: string };
+let googleJwks: GoogleJwk[] = [];
+let googleJwksExpiresAt = 0;
+
+async function verifyGoogleCredential(credential: string, expectedNonce: string): Promise<GoogleClaims | null> {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId) throw new Error("Google sign-in is not configured on the server.");
+  const parts = credential.split(".");
+  if (parts.length !== 3) return null;
+  let header: { alg?: string; kid?: string };
+  let claims: GoogleClaims;
+  try {
+    header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as typeof header;
+    claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as GoogleClaims;
+  } catch { return null; }
+  if (header.alg !== "RS256" || !header.kid) return null;
+  if (googleJwksExpiresAt <= Date.now()) {
+    const response = await fetch("https://www.googleapis.com/oauth2/v3/certs", { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) throw new Error("Google sign-in verification is temporarily unavailable.");
+    const body = await response.json() as { keys?: GoogleJwk[] };
+    if (!Array.isArray(body.keys) || body.keys.length === 0) throw new Error("Google sign-in verification is temporarily unavailable.");
+    googleJwks = body.keys;
+    const maxAge = Number(/max-age=(\d+)/i.exec(response.headers.get("cache-control") ?? "")?.[1] ?? 3600);
+    googleJwksExpiresAt = Date.now() + Math.min(maxAge, 24 * 60 * 60) * 1000;
+  }
+  const jwk = googleJwks.find((key) => key.kid === header.kid && key.use !== "enc");
+  if (!jwk) return null;
+  let signatureValid = false;
+  try {
+    signatureValid = verifySignature(
+      "RSA-SHA256",
+      Buffer.from(`${parts[0]}.${parts[1]}`),
+      createPublicKey({ key: jwk, format: "jwk" }),
+      Buffer.from(parts[2], "base64url"),
+    );
+  } catch { return null; }
+  const issuerValid = claims.iss === "https://accounts.google.com" || claims.iss === "accounts.google.com";
+  const audienceValid = claims.aud === clientId;
+  const timeValid = typeof claims.exp === "number" && claims.exp > Math.floor(Date.now() / 1000);
+  if (!signatureValid || !issuerValid || !audienceValid || !timeValid || claims.email_verified !== true || !claims.sub || !claims.email || claims.nonce !== expectedNonce) return null;
+  return { ...claims, email: claims.email.toLowerCase().trim() };
+}
 
 authRouter.post("/register", authLimiter, async (request, response, next) => {
   const parsed = registerSchema.safeParse(request.body);
@@ -182,13 +238,72 @@ authRouter.post("/login", authLimiter, async (request, response, next) => {
       return;
     }
     if (!user.emailVerifiedAt) {
-      user.emailVerifiedAt = new Date();
-      await user.save();
+      response.status(403).json({ error: "Verify your email before signing in. Use the resend verification option to get a fresh link." });
+      return;
     }
     await regenerateSession(request, String(user._id));
     console.log(`[AUTH] Login successful: User ${user.email} (ID: ${user._id})`);
     response.json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email } });
   } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.post("/google", authLimiter, async (request, response, next) => {
+  const parsed = z.object({ credential: z.string().min(100).max(10000), nonce: z.string().uuid() }).strict().safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ error: "Google did not return a valid sign-in credential." }); return; }
+  try {
+    const claims = await verifyGoogleCredential(parsed.data.credential, parsed.data.nonce);
+    if (!claims) { response.status(401).json({ error: "Google sign-in could not be verified. Please try again." }); return; }
+    const user = await User.findOne({ email: claims.email });
+    if (!user) {
+      response.status(404).json({ error: "No UrQrPrint account uses this Google email. Create an account with email OTP first, then continue with Google." });
+      return;
+    }
+    if (!user.emailVerifiedAt) {
+      // Google asserted this email as verified; this is a trusted identity proof.
+      user.emailVerifiedAt = new Date();
+      await user.save();
+    }
+    await regenerateSession(request, String(user._id));
+    response.json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.post("/google/register", authLimiter, async (request, response, next) => {
+  const parsed = z.object({
+    credential: z.string().min(100).max(10000),
+    nonce: z.string().uuid(),
+    ownerName: z.string().trim().min(2).max(100),
+    shopName: z.string().trim().min(2).max(100),
+    mobile: z.string().trim().regex(/^[+0-9 ()-]{7,20}$/),
+    termsAccepted: z.literal(true),
+  }).strict().safeParse(request.body);
+  if (!parsed.success) { response.status(400).json({ error: "Complete your shop details and accept the Terms and Privacy Notice before continuing." }); return; }
+  try {
+    const claims = await verifyGoogleCredential(parsed.data.credential, parsed.data.nonce);
+    if (!claims) { response.status(401).json({ error: "Google sign-in could not be verified. Please try again." }); return; }
+    if (await User.exists({ email: claims.email })) {
+      response.status(409).json({ error: "An account with this Google email already exists. Continue from the sign-in page." });
+      return;
+    }
+    const user = await User.create({ ownerName: parsed.data.ownerName, email: claims.email, termsAcceptedAt: new Date(), emailVerifiedAt: new Date() });
+    let shop;
+    try {
+      shop = await Shop.create({ ownerId: user._id, slug: makeSlug(parsed.data.shopName), displayName: parsed.data.shopName, ownerName: parsed.data.ownerName, mobile: parsed.data.mobile, email: claims.email });
+    } catch (error) {
+      await User.deleteOne({ _id: user._id });
+      throw error;
+    }
+    await regenerateSession(request, String(user._id));
+    response.status(201).json({ user: { id: String(user._id), ownerName: user.ownerName, email: user.email }, shop: { id: String(shop._id), slug: shop.slug } });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === 11000) {
+      response.status(409).json({ error: "An account with this Google email already exists. Continue from the sign-in page." });
+      return;
+    }
     next(error);
   }
 });
@@ -226,15 +341,14 @@ authRouter.post("/resend-verification", authLimiter, async (request, response, n
   const parsed = emailSchema.safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Enter a valid email address." }); return; }
   try {
+    if (!isMailConfigured()) { response.status(503).json({ error: "Account email delivery is not configured." }); return; }
     const user = await User.findOne({ email: parsed.data.email }).select("+emailVerificationTokenHash +emailVerificationExpiresAt");
-    if (user && !user.emailVerifiedAt && isMailConfigured()) {
+    if (user && !user.emailVerifiedAt) {
       const token = randomBytes(32).toString("hex");
       user.emailVerificationTokenHash = digest(token);
       user.emailVerificationExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
       await user.save();
-      const link = new URL("/verify-email", request.get("origin") ?? "http://localhost:5173");
-      link.searchParams.set("email", user.email); link.searchParams.set("token", token);
-      await sendAccountEmail(user.email, "Verify your UrQrPrint email", `Verify your email within 30 minutes: ${link.toString()}`);
+      await sendAccountEmail(user.email, "Verify your UrQrPrint email", `Verify your email within 30 minutes: ${accountLink("/verify-email", { email: user.email, token })}`);
     }
     response.json({ message: "If the account needs verification, a new link has been sent." });
   } catch (error) { next(error); }
@@ -250,9 +364,7 @@ authRouter.post("/forgot-password", authLimiter, async (request, response, next)
       user.passwordResetTokenHash = digest(token);
       user.passwordResetExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
       await user.save();
-      const link = new URL("/reset-password", request.get("origin") ?? "http://localhost:5173");
-      link.searchParams.set("email", user.email); link.searchParams.set("token", token);
-      await sendAccountEmail(user.email, "Reset your UrQrPrint password", `Reset your password within 30 minutes: ${link.toString()}`);
+      await sendAccountEmail(user.email, "Reset your UrQrPrint password", `Reset your password within 30 minutes: ${accountLink("/reset-password", { email: user.email, token })}`);
     }
     response.json({ message: "If an account exists for that email, password reset instructions have been sent." });
   } catch (error) { next(error); }
