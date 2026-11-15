@@ -17,12 +17,14 @@ import { razorpayWebhookRouter } from "./routes/razorpayWebhook.js";
 
 export const app = express();
 app.set("trust proxy", 1);
-const allowedOrigins = new Set(
-  (process.env.CLIENT_ORIGIN ?? "http://localhost:5173,http://127.0.0.1:5173")
+const allowedOrigins = new Set([
+  ...(process.env.CLIENT_ORIGIN ?? "http://localhost:5173,http://127.0.0.1:5173")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
-);
+  "https://urqrprint.shop",
+  "https://www.urqrprint.shop",
+]);
 
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin || origin === "null" || origin.startsWith("file:") || origin.startsWith("vscode-webview:")) return true;
