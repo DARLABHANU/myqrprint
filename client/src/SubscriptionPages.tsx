@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
-  ArrowRight,
   Check,
   CheckCircle2,
   Clock3,
@@ -131,8 +130,6 @@ export function SubscriptionPage() {
   const [success, setSuccess] = useState("");
   const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
   const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentItem[]>([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlanId>("starter");
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [submitting, setSubmitting] = useState(false);
   const paidPlanActive = Boolean(subscription && subscription.plan !== "demo" && !subscription.isExpired);
@@ -161,16 +158,10 @@ export function SubscriptionPage() {
     void loadData();
   }, []);
 
-  const selectedPlan = useMemo(() => {
-    return subscriptionPlans[selectedPlanId] ?? subscriptionPlans.starter;
-  }, [selectedPlanId]);
-
-  const payableAmountPaise = useMemo(() => {
-    if (!selectedPlan) return 0;
-    return billingCycle === "annual" ? selectedPlan.annualPricePaise : selectedPlan.monthlyPricePaise;
-  }, [selectedPlan, billingCycle]);
-
-  async function startSubscriptionCheckout() {
+  async function startSubscriptionCheckout(cycle: BillingCycle = billingCycle) {
+    const expectedAmountPaise = cycle === "annual"
+      ? subscriptionPlans.starter.annualPricePaise
+      : subscriptionPlans.starter.monthlyPricePaise;
     setSubmitting(true);
     setError("");
     setSuccess("");
@@ -179,11 +170,11 @@ export function SubscriptionPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ billingCycle }),
+        body: JSON.stringify({ billingCycle: cycle }),
       });
       const data = await response.json().catch(() => ({} as { error?: string; checkout?: { amount?: number; currency?: string; orderId?: string } }));
       if (!response.ok) throw new Error(data.error || "Could not start subscription checkout.");
-      if (!data.checkout?.orderId || !data.checkout.keyId || !data.checkout.currency || data.checkout.amount !== payableAmountPaise) {
+      if (!data.checkout?.orderId || !data.checkout.keyId || data.checkout.currency !== "INR" || data.checkout.amount !== expectedAmountPaise) {
         throw new Error("Subscription pricing has not updated on the payment server yet. Checkout was stopped to prevent charging the wrong amount.");
       }
       const Razorpay = await loadSubscriptionCheckout();
@@ -197,7 +188,6 @@ export function SubscriptionPage() {
               const status = await statusResponse.json();
               if (status.status === "paid") {
                 setSuccess(`Payment confirmed. Your plan is active until ${status.expiresAt ? new Date(status.expiresAt).toLocaleDateString("en-IN") : "the displayed expiry date"}.`);
-                setModalOpen(false);
                 setSubmitting(false);
                 await loadData();
                 return;
@@ -227,8 +217,7 @@ export function SubscriptionPage() {
             });
             const verifyData = await verifyResponse.json();
             if (!verifyResponse.ok) throw new Error(verifyData.error || "Payment verification is pending.");
-            setSuccess(`Payment confirmed. Your plan is active until ${new Date(verifyData.expiresAt).toLocaleDateString("en-IN")}.`);
-            setModalOpen(false);
+            setSuccess(`Payment confirmed. Your plan is active until ${verifyData.expiresAt ? new Date(verifyData.expiresAt).toLocaleDateString("en-IN") : "the displayed expiry date"}.`);
             await loadData();
           } catch (verifyError) {
             setError(verifyError instanceof Error ? verifyError.message : "Could not verify subscription payment.");
@@ -262,7 +251,7 @@ export function SubscriptionPage() {
           <button
             type="button"
             className="button button-dark"
-            onClick={() => { setBillingCycle("monthly"); setSelectedPlanId("starter"); setModalOpen(true); }}
+            onClick={() => void startSubscriptionCheckout()}
             style={{ padding: "10px 18px", gap: 8, fontSize: 13 }}
           >
             <Crown size={16} /> {paidPlanActive ? "Renew / extend plan" : "Choose a paid plan"}
@@ -478,10 +467,8 @@ export function SubscriptionPage() {
                         <button
                           type="button"
                           className={`button ${plan.popular ? "button-dark" : ""}`}
-                          onClick={() => {
-                            setSelectedPlanId(planKey);
-                            setModalOpen(true);
-                          }}
+                          disabled={submitting}
+                          onClick={() => void startSubscriptionCheckout(billingCycle)}
                           style={{
                             width: "100%",
                             padding: "11px 0",
@@ -493,7 +480,11 @@ export function SubscriptionPage() {
                             cursor: "pointer",
                           }}
                         >
-                          {isCurrent ? "Extend current plan" : `Choose ${billingCycle === "annual" ? "12-month" : "monthly"} plan`}
+                          {submitting
+                            ? "Opening Razorpay…"
+                            : isCurrent
+                              ? `Extend ${billingCycle === "annual" ? "12-month" : "monthly"} plan`
+                              : `Choose ${billingCycle === "annual" ? "12-month" : "monthly"} plan`}
                         </button>
                       </article>
                     );
@@ -520,51 +511,6 @@ export function SubscriptionPage() {
           </>
         )}
 
-        {/* Payment & Checkout Modal */}
-        {modalOpen && selectedPlan && (
-          <div className="subscription-modal-backdrop" role="presentation" onClick={() => setModalOpen(false)}>
-            <div
-              className="subscription-plan-dialog"
-              role="dialog"
-              aria-modal="true"
-              onClick={(event) => event.stopPropagation()}
-              style={{ maxWidth: 840 }}
-            >
-              <header>
-                <div>
-                  <h2>Choose your UrQrPrint subscription</h2>
-                  <p>Secure checkout through Razorpay. Your plan activates after payment is confirmed.</p>
-                </div>
-                <button type="button" className="subscription-modal-close" onClick={() => setModalOpen(false)}>
-                  <X size={18} />
-                </button>
-              </header>
-
-              <div className="subscription-plan-dialog-body" style={{ gridTemplateColumns: "1fr" }}>
-                <div className="subscription-checkout-panel" style={{ width: "100%" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
-                    <div>
-                      <h3 style={{ fontSize: 18 }}>{selectedPlan.name} · {billingCycle === "annual" ? "12 months" : "1 month"}</h3>
-                      <p style={{ marginTop: 8 }}>Unlimited customer print orders while your plan is active. Secure payment is processed by Razorpay.</p>
-                    </div>
-                    <div style={{ textAlign: "right", color: "#078c68", fontSize: 26, fontWeight: 800 }}>
-                      {formatRupees(payableAmountPaise)}
-                      <small style={{ display: "block", color: "#64748b", fontSize: 11, fontWeight: 500 }}>{billingCycle === "annual" ? "₹100 less than 12 monthly payments" : "billed monthly"}</small>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-                    <button type="button" className="button" onClick={() => setBillingCycle("monthly")} aria-pressed={billingCycle === "monthly"} style={{ border: "1px solid #cbd5e1", background: billingCycle === "monthly" ? "#e8f8f1" : "white", color: "#183b31" }}>₹50 · Monthly</button>
-                    <button type="button" className="button" onClick={() => setBillingCycle("annual")} aria-pressed={billingCycle === "annual"} style={{ border: "1px solid #cbd5e1", background: billingCycle === "annual" ? "#e8f8f1" : "white", color: "#183b31" }}>₹500 · 12 months · Save ₹100</button>
-                  </div>
-                  <button type="button" disabled={submitting} className="button button-dark" onClick={() => void startSubscriptionCheckout()} style={{ width: "100%", height: 44, marginTop: 18, fontSize: 14, gap: 8 }}>
-                    {submitting ? "Opening secure checkout…" : `Pay ${formatRupees(payableAmountPaise)} with Razorpay`} <ArrowRight size={15} />
-                  </button>
-                  <small style={{ display: "block", textAlign: "center", marginTop: 10 }}>This is a one-time payment for the selected term. Renewal is manual; your plan will not auto-charge.</small>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );
