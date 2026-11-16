@@ -77,7 +77,7 @@ declare global {
   }
 }
 
-const AGENT_INSTALLER_SHARE_URL = "https://drive.google.com/file/d/19Wq3kzb1dcJLujsiWawTnvYzBCaU7FUG/view?usp=sharing";
+const AGENT_INSTALLER_SHARE_URL = "https://drive.google.com/file/d/10XN0kWqVfXpaUhPiQQmGEdh_rLKX8NBv/view?usp=sharing";
 
 function getAgentInstallerDownloadUrl() {
   const shareUrl = new URL(AGENT_INSTALLER_SHARE_URL);
