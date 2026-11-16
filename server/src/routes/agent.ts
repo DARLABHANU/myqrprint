@@ -303,8 +303,7 @@ authenticatedAgentRouter.post("/heartbeat", async (request, response, next) => {
       { shopId: agent.shopId, agentDeviceId: agent._id, protocol: "windows", ...(discoveredNames.length ? { systemName: { $nin: discoveredNames } } : {}) },
       { $set: { status: "offline" } },
     );
-    for (const printer of parsed.data.printers) {
-      await ShopPrinter.findOneAndUpdate(
+    await Promise.all(parsed.data.printers.map((printer) => ShopPrinter.findOneAndUpdate(
         { shopId: agent.shopId, agentDeviceId: agent._id, systemName: printer.systemName },
         { $set: {
           name: printer.displayName.slice(0, 80),
@@ -318,8 +317,7 @@ authenticatedAgentRouter.post("/heartbeat", async (request, response, next) => {
           status: "ready",
         } },
         { upsert: true, new: true, setDefaultsOnInsert: true },
-      );
-    }
+      )));
     response.json({ accepted: parsed.data.printers.length, lastSeenAt: now.toISOString() });
   } catch (error) { next(error); }
 });

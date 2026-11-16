@@ -8,7 +8,7 @@ export default defineConfig({
     host: "0.0.0.0",
     proxy: {
       "/api": {
-        target: "https://printly-api.onrender.com",
+        target: "https://api-aws.urqrprint.shop",
         changeOrigin: true,
         secure: true,
       },

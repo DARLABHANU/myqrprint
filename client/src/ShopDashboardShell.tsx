@@ -146,12 +146,8 @@ export function ShopDashboardShell({ children }: { children: ReactNode }) {
     let mounted = true;
     async function pollOrders() {
       try {
-        const [response, shopResponse] = await Promise.all([
-          json<{ orders: OrderStatus[] }>("/api/shops/orders"),
-          json<{ shop: ShopSummary; agentOnline?: boolean }>("/api/shops/me"),
-        ]);
+        const response = await json<{ orders: OrderStatus[] }>("/api/shops/orders");
         if (!mounted) return;
-        setShop({ ...shopResponse.shop, agentOnline: Boolean(shopResponse.agentOnline) });
         const current = new Map(response.orders.map((order) => [order.code, {
           status: order.status,
           notificationEligible: isNewOrderNotificationEligible(order),

@@ -127,8 +127,6 @@ export function PrinterManagementPage() {
     try {
       if (window.printly?.refresh) {
         await window.printly.refresh().catch(() => {});
-        // Brief pause to allow the server to process the heartbeat payload
-        await new Promise((resolve) => setTimeout(resolve, 300));
       }
 
       const [printersRes, devicesRes, shopRes] = await Promise.all([

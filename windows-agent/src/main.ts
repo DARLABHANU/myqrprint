@@ -212,10 +212,11 @@ async function discoverPrinters(): Promise<DiscoveredPrinter[]> {
 
   return Array.from(map.values());
 }
-async function heartbeat() {
-  const printers = await discoverPrinters();
-  await api('/api/agent/heartbeat', { method: 'POST', body: JSON.stringify({ agentVersion: VERSION, printers }) });
-  emitStatus({ printers: printers.length, lastHeartbeat: new Date().toISOString() });
+async function heartbeat(printers?: DiscoveredPrinter[]) {
+  const discoveredPrinters = printers ?? await discoverPrinters();
+  await api('/api/agent/heartbeat', { method: 'POST', body: JSON.stringify({ agentVersion: VERSION, printers: discoveredPrinters }) });
+  emitStatus({ printers: discoveredPrinters.length, lastHeartbeat: new Date().toISOString() });
+  return discoveredPrinters;
 }
 async function printJob(job: ReturnType<typeof leasedPrintJobSchema.parse>) {
   const files: Array<{ name: string; mediaType: string; data: string }> = [];
@@ -400,9 +401,10 @@ ipcMain.handle('agent:status', async () => {
   };
 });
 ipcMain.handle('agent:refresh', async () => {
+  const printersList = await discoverPrinters();
   if (connection && sessionAuthenticated) {
     try {
-      await heartbeat();
+      await heartbeat(printersList);
       console.log('[AGENT] Manual refresh triggered successful heartbeat.');
     } catch (err) {
       console.error('[AGENT] Manual refresh heartbeat failed:', err);
@@ -411,7 +413,6 @@ ipcMain.handle('agent:refresh', async () => {
   } else {
     console.warn('[AGENT] agent:refresh invoked but agent has no saved connection credentials.');
   }
-  const printersList = await discoverPrinters();
   return {
     connected: Boolean(connection && sessionAuthenticated),
     deviceName: connection?.deviceName || hostname(),
