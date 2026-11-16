@@ -1,0 +1,14 @@
+# Generated Electron bundles and installers are not part of the web deployment.
+windows-agent/out/
+**/out/
+
+# Local development and machine-specific files.
+.venv/
+**/.venv/
+node_modules/
+**/node_modules/
+.git/
+.vercel/
+server/data/
+*.log
+*.tsbuildinfo
