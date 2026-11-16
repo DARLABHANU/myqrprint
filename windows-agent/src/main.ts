@@ -24,7 +24,7 @@ let tray: Tray | null = null;
 let isQuitting = false;
 const pendingPrints = new Map<string, { window: BrowserWindow; printerName: string; options: ReturnType<typeof leasedPrintJobSchema.parse>['options']; resolve: () => void; reject: (error: Error) => void }>();
 const productionWebUrl = 'https://www.urqrprint.shop';
-const renderApiUrl = 'https://printly-api.onrender.com';
+const apiServerUrl = 'https://api-aws.urqrprint.shop';
 const pauseJobPolling = process.env.PRINTLY_PAUSE_JOB_POLLING === '1';
 function isAllowedOrigin(origin: string): boolean {
   if (!origin || origin === 'null' || origin.startsWith('file:') || origin.startsWith('vscode-webview:')) return true;
@@ -38,7 +38,11 @@ function isAllowedOrigin(origin: string): boolean {
 async function loadConnection() {
   try {
     if (safeStorage.isEncryptionAvailable()) {
-      connection = JSON.parse(safeStorage.decryptString(await readFile(credentialsPath())));
+      const savedConnection = JSON.parse(safeStorage.decryptString(await readFile(credentialsPath()))) as Connection;
+      connection = { ...savedConnection, apiUrl: apiServerUrl };
+      if (savedConnection.apiUrl !== apiServerUrl) {
+        await writeFile(credentialsPath(), safeStorage.encryptString(JSON.stringify(connection)));
+      }
       console.log(`[AGENT] Loaded credentials for device: ${connection?.deviceName}, shop: ${connection?.shopName}`);
     }
   } catch (err) {
@@ -433,7 +437,7 @@ ipcMain.handle('agent:google-login', async () => {
   if (connection && sessionAuthenticated) {
     return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
   }
-  const startResponse = await fetch(new URL('/api/agent/login/start', renderApiUrl), {
+  const startResponse = await fetch(new URL('/api/agent/login/start', apiServerUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ deviceName: hostname(), agentVersion: VERSION }),
@@ -450,7 +454,7 @@ ipcMain.handle('agent:google-login', async () => {
   while (Date.now() < expiresAt) {
     let pollResponse: Response;
     try {
-      pollResponse = await fetch(new URL('/api/agent/login/poll', renderApiUrl), {
+      pollResponse = await fetch(new URL('/api/agent/login/poll', apiServerUrl), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: startBody.state, pollToken: startBody.pollToken }),
@@ -475,7 +479,7 @@ ipcMain.handle('agent:google-login', async () => {
     }
     if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure storage is unavailable on this computer.');
     const nextConnection: Connection = {
-      apiUrl: renderApiUrl,
+      apiUrl: apiServerUrl,
       token: pollBody.accessToken,
       deviceName: pollBody.deviceName,
       shopName: pollBody.shop.displayName,
@@ -499,7 +503,7 @@ ipcMain.handle('agent:connect', async (event) => {
   if (connection && sessionAuthenticated) {
     return { connected: true, deviceName: connection.deviceName, shopName: connection.shopName, agentVersion: VERSION };
   }
-  const apiUrl = renderApiUrl;
+  const apiUrl = apiServerUrl;
   const cookieUrl = new URL('/', senderOrigin).toString();
   const cookies = await session.defaultSession.cookies.get({ url: cookieUrl });
   const sessionCookie = cookies.find((cookie) => cookie.name === 'printly.sid');
