@@ -306,6 +306,7 @@ export function ShopQrCodePage() {
 
 export function AccountPage({ mode }: { mode: "login" | "register" }) {
   const isRegister = mode === "register";
+  const isDesktopAgent = Boolean(window.printly);
   const [values, setValues] = useState({
     ownerName: "",
     shopName: "",
@@ -456,12 +457,12 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
 
   return (
     <div className="account-page">
-      <a className="brand account-brand" href="/">
+      <a className="brand account-brand" href={isDesktopAgent ? "/login" : "/"}>
         <span className="brand-mark"><QrCode size={20} /></span>
         <span>UrQrPrint<span className="brand-period">.</span></span>
       </a>
       <main className="account-card">
-        <a className="back-link" href="/"><ArrowLeft size={15} /> Back to home</a>
+        {!isDesktopAgent && <a className="back-link" href="/"><ArrowLeft size={15} /> Back to home</a>}
         <div className="eyebrow"><span className="eyebrow-dot" /> YOUR SHOP, SIMPLIFIED</div>
         <h1>{isRegister ? (otpStage ? "Enter verification OTP." : "Set up your shop.") : "Welcome back."}</h1>
         <p className="account-intro">{isRegister ? (otpStage ? "Enter the 6-digit OTP sent to your email to complete registration and log in." : "Create your shop owner account. You will receive a 6-digit OTP to log in.") : "Sign in to your shop dashboard with your email and password."}</p>
@@ -487,7 +488,7 @@ export function AccountPage({ mode }: { mode: "login" | "register" }) {
         </form>
         {needsEmailVerification && <button className="text-link" type="button" disabled={busy || !values.email} onClick={() => void resendVerificationEmail()}>Resend verification email</button>}
         {(googleClientId || window.printly?.googleLogin) && !otpStage && <div className="google-sign-in"><span>{isRegister ? "or create your account with" : "or continue with"}</span>{window.printly?.googleLogin ? <button className="google-agent-button" type="button" disabled={busy} onClick={() => void continueWithGoogleInDesktop()}><b aria-hidden="true">G</b>{busy ? "Continue in your browser…" : "Continue with Google"}</button> : <div ref={googleButtonRef} />}</div>}
-        <p className="account-switch">{isRegister ? "Already have an account?" : "New to UrQrPrint?"} <a href={`${isRegister ? "/login" : "/register"}${new URLSearchParams(window.location.search).get("desktopLogin") ? `?desktopLogin=${encodeURIComponent(new URLSearchParams(window.location.search).get("desktopLogin")!)}` : ""}`}>{isRegister ? "Sign in" : "Create an account"}</a></p>
+        {(!isDesktopAgent || isRegister) && <p className="account-switch">{isRegister ? "Already have an account?" : "New to UrQrPrint?"} <a href={`${isRegister ? "/login" : "/register"}${new URLSearchParams(window.location.search).get("desktopLogin") ? `?desktopLogin=${encodeURIComponent(new URLSearchParams(window.location.search).get("desktopLogin")!)}` : ""}`}>{isRegister ? "Sign in" : "Create an account"}</a></p>}
         {!isRegister && <p className="account-switch"><a href="/forgot-password">Forgot your password?</a></p>}
         <div className="account-security"><ShieldCheck size={15} /> Your account is protected with a secure, private session.</div>
       </main>

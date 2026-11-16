@@ -307,8 +307,8 @@ function createWindow() {
 
   const webUrl = process.env.PRINTLY_WEB_URL ?? (app.isPackaged ? productionWebUrl : 'http://localhost:5173');
   const launchUrl = new URL(webUrl);
-  if (connection && sessionAuthenticated && (launchUrl.pathname === '/' || launchUrl.pathname === '')) {
-    launchUrl.pathname = '/dashboard';
+  if (launchUrl.pathname === '/' || launchUrl.pathname === '') {
+    launchUrl.pathname = connection && sessionAuthenticated ? '/dashboard' : '/login';
   }
   void mainWindow.loadURL(launchUrl.toString());
 

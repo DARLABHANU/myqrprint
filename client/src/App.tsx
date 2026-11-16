@@ -66,9 +66,13 @@ const benefits = [
 
 export default function App() {
   const path = window.location.pathname.replace(/\/$/, "") || "/";
+  const isDesktopAgent = Boolean(window.printly);
   useEffect(() => {
     console.log(`%c[PAGE NAV] Opened: ${path}`, "color: #9333ea; font-weight: 600;");
   }, [path]);
+  // Shop accounts are created on the website. The desktop agent is a sign-in
+  // client, so never expose the marketing home or registration form in it.
+  if (isDesktopAgent && path === "/") return <AccountPage mode="login" />;
   const customerPage = /^\/p\/([^/]+)\/?$/.exec(path);
   if (customerPage) {
     let slug = customerPage[1];
@@ -79,7 +83,7 @@ export default function App() {
     }
     return <CustomerOrderPage slug={slug} />;
   }
-  if (path === "/register") return <AccountPage mode="register" />;
+  if (path === "/register") return <AccountPage mode={isDesktopAgent ? "login" : "register"} />;
   if (path === "/login") return <AccountPage mode="login" />;
   if (path === "/desktop-login") return <DesktopAgentLoginPage />;
   if (path === "/verify-email") return <AuthFlowPage flow="email" />;
