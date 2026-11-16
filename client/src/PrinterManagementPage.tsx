@@ -538,27 +538,29 @@ export function PrinterManagementPage() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <a
-                href={getAgentInstallerDownloadUrl()}
-                aria-label="Download the UrQrPrint Windows agent installer"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "7px 14px",
-                  borderRadius: 8,
-                  background: "#ffffff",
-                  border: "1px solid #e2e8f0",
-                  color: "#1e293b",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-                  textDecoration: "none",
-                }}
-              >
-                <Download size={14} style={{ color: "#64748b" }} /> Download agent
-              </a>
+              {!isInsideElectron && (
+                <a
+                  href={getAgentInstallerDownloadUrl()}
+                  aria-label="Download the UrQrPrint Windows agent installer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    background: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    color: "#1e293b",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                    textDecoration: "none",
+                  }}
+                >
+                  <Download size={14} style={{ color: "#64748b" }} /> Download agent
+                </a>
+              )}
             </div>
           </div>
 
